@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D&D Map Gridder</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column; /* Changed from row to column */
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            overflow: hidden; /* Prevent body scrollbars */
+        }
+
+        .controls {
+            background-color: #ddd;
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap; /* Allow controls to wrap */
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid #bbb;
+        }
+
+        .controls label,
+        .controls button,
+        .controls input {
+            margin-right: 5px;
+        }
+        #rotationControls.hidden {
+            display: none !important; /* Use important if needed to override inline-block */
+        }
+        /* Styling for the category container */
+        .icon-categories {
+            background-color: #eee;
+            padding: 10px;
+            border-bottom: 1px solid black;
+            display: flex; /* Keep items in a row */
+            gap: 10px;
+            align-items: flex-start; /* Align tops of dropdowns */
+            min-height: 50px;
+            /* Allow horizontal scrolling if many categories */
+            overflow-x: auto;
+            /* Prevent vertical expansion if dropdowns open */
+            max-height: 150px; /* Adjust as needed */
+            overflow-y: hidden; /* Hide vertical scroll on main container */
+        }
+
+        /* Styling for each category dropdown */
+        .icon-categories details {
+            border: 1px solid #bbb;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            max-height: 140px; /* Limit height when open */
+
+        }
+
+        .icon-categories summary {
+            padding: 5px 30px 5px 10px;
+            cursor: pointer;
+            background-color: #e0e0e0;
+            border-bottom: 1px solid #bbb; /* Separator when closed */
+            list-style: none; /* Remove default triangle */
+            position: relative; /* For custom arrow */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+         .icon-categories summary::-webkit-details-marker { display: none; } /* Hide default arrow (Chrome/Safari) */
+         .icon-categories summary::marker { display: none; } /* Hide default arrow (Firefox) */
+
+         /* Custom Arrow (Optional) */
+         .icon-categories summary::after {
+            content: ' ▼'; /* Down arrow when closed */
+            font-size: 0.8em;
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+         }
+         .icon-categories details[open] summary::after {
+            content: ' ▲'; /* Up arrow when open */
+         }
+
+
+        /* Styling for the content area within the dropdown */
+        .icon-categories .dropdown-content {
+            display: flex;
+            flex-wrap: wrap; /* Allow icons to wrap */
+            gap: 8px; /* Spacing between icons */
+            padding: 10px;
+            max-height: 100px; /* Limit inner content height */
+            overflow-y: auto; /* Allow scrolling WITHIN the dropdown */
+            background-color: white; /* Background for icon area */
+        }
+
+        /* Styling for icons within the dropdown */
+        .icon-categories .dropdown-content img {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc; /* Lighter border inside */
+            cursor: grab;
+            background-color: white;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.1); /* Subtle shadow */
+        }
+
+        .map-container {
+            flex-grow: 1; /* Take remaining vertical space */
+            position: relative; /* Needed for absolute positioning of canvas */
+            overflow: hidden; /* Clip the canvas */
+            background-color: black; /* Background if canvas is smaller */
+            display: flex; /* Center canvas */
+            justify-content: center; /* Center canvas */
+            align-items: center; /* Center canvas */
+        }
+
+        canvas {
+            border: 1px solid black;
+            cursor: grab; /* Default cursor for panning */
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain; /* Ensure canvas itself fits container */
+            background-color: white; /* Default background */
+        }
+
+        /* Hide scaling controls initially or after confirmation */
+        .scaling-controls.hidden {
+            display: none;
+        }
+
+        .context-menu {
+            display: none;
+            position: absolute;
+            background-color: white;
+            border: 1px solid black;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            padding: 5px 0;
+            z-index: 1000;
+        }
+        .context-menu button {
+            display: block;
+            width: 100%;
+            padding: 5px 15px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+        }
+        .context-menu button:hover {
+            background-color: #eee;
+        }
+        /* Styles for the map container when in fullscreen */
+        .map-container:fullscreen {
+            /* Ensure it takes up the whole screen */
+            width: 100vw;
+            height: 100vh;
+            /* Override any potential max-width/height from normal mode */
+            max-width: none;
+            max-height: none;
+            /* Ensure background and centering are maintained */
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0; /* Remove padding if any */
+            margin: 0; /* Remove margin */
+            border: none; /* Remove borders */
+        }
+        /* You might need vendor prefixes for older browser support */
+        .map-container:-webkit-full-screen {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0; margin: 0; border: none;
+        }
+        .map-container:-moz-full-screen {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0; margin: 0; border: none;
+        }
+        .map-container:-ms-fullscreen {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0; margin: 0; border: none;
+        }
+
+        /* Ensure canvas within fullscreen container behaves */
+        .map-container:fullscreen canvas {
+            /* Allow canvas to grow to fit the fullscreen container via resizeCanvas logic */
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .map-container:-webkit-full-screen canvas { max-width: 100%; max-height: 100%; }
+        .map-container:-moz-full-screen canvas { max-width: 100%; max-height: 100%; }
+        .map-container:-ms-fullscreen canvas { max-width: 100%; max-height: 100%; }
+
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div>
+            <label for="mapUpload">Upload Map:</label>
+            <input type="file" id="mapUpload" accept="image/*">
+        </div>
+        <div id="scalingControls" class="scaling-controls">
+            <label for="gridSizeSlider">Grid Size (pixels):</label>
+            <input type="range" id="gridSizeSlider" min="10" max="200" value="50">
+            <span id="gridSizeValue">50</span>px
+            <div id="rotationControls" style="display: inline-block; margin-left: 15px;">
+                <button id="rotateLeftButton" title="Rotate Counter-Clockwise">↶ Rotate</button>
+                <button id="rotateRightButton" title="Rotate Clockwise">Rotate ↷</button>
+           </div>
+            <button id="confirmScaleButton">Confirm Scale (1 square = 5ft)</button>
+            <p style="margin: 0 0 0 10px; font-size: 0.9em;">Adjust slider until grid squares match 5ft on your map.</p>
+        </div>
+         <div id="zoomControls" class="hidden"> <!-- Initially hidden -->
+            <label for="zoomSlider">Zoom:</label>
+            <input type="range" id="zoomSlider" min="0.1" max="5" step="0.1" value="1">
+            <span id="zoomValue">1.0</span>x
+        </div>
+        <div>
+            <label for="iconUpload">Add Icon:</label>
+            <input type="file" id="iconUpload" accept="image/*">
+        </div>
+        <div>
+            <button id="fullscreenButton">Enter Fullscreen</button>
+        </div>
+    </div>
+
+    <div class="icon-categories" id="iconCategoriesContainer">
+        <span>Icons:</span>
+        <!-- Preset icons will be added here by JS -->
+    </div>
+
+    <div class="map-container">
+        <canvas id="mapCanvas"></canvas>
+        <!-- Context Menu for Icons -->
+        <div id="iconContextMenu" class="context-menu">
+            <button id="ctxMove">Move</button> <!-- Technically handled by drag, but could be explicit -->
+            <button id="ctxMarkDead">Mark Dead/Alive</button>
+            <button id="ctxRemove">Remove</button>
+            <hr style="margin: 5px 0;"> <!-- Optional separator -->
+            <button id="ctxSetMedium">Set Size: Medium (1x1)</button>
+            <button id="ctxSetSmall">Set Size: Small (Visual)</button>
+            <button id="ctxSetLarge">Set Size: Large (2x2)</button>
+            <button id="ctxSetHuge">Set Size: Huge (3x3)</button>
+            <button id="ctxSetGarg">Set Size: Gargantuan (4x4)</button>
+            <hr style="margin: 5px 0;">
+            <button id="ctxRotateCW">Rotate CW ↷</button>
+            <button id="ctxRotateCCW">Rotate CCW ↶</button>
+        </div>
+    </div>
+
+    <script>
+        const mapUpload = document.getElementById('mapUpload');
+        const iconUpload = document.getElementById('iconUpload');
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSizeSlider = document.getElementById('gridSizeSlider');
+        const gridSizeValue = document.getElementById('gridSizeValue');
+        const confirmScaleButton = document.getElementById('confirmScaleButton');
+        const scalingControls = document.getElementById('scalingControls');
+        const zoomControls = document.getElementById('zoomControls');
+        const zoomSlider = document.getElementById('zoomSlider');
+        const zoomValue = document.getElementById('zoomValue');
+        const iconPalette = document.getElementById('iconPalette');
+        const mapContainer = document.querySelector('.map-container');
+        const iconContextMenu = document.getElementById('iconContextMenu');
+        const ctxMove = document.getElementById('ctxMove');
+        const ctxMarkDead = document.getElementById('ctxMarkDead');
+        const ctxRemove = document.getElementById('ctxRemove');
+        const fullscreenButton = document.getElementById('fullscreenButton'); 
+        const rotationControls = document.getElementById('rotationControls'); 
+        const rotateLeftButton = document.getElementById('rotateLeftButton');
+        const rotateRightButton = document.getElementById('rotateRightButton'); 
+
+
+        let mapImage = null;
+        let currentRotation = 0; // Add this: 0, 90, 180, 270 degrees
+        let gridSize = 50; // Initial grid size in pixels (adjusts during scaling)
+        let isScaling = true; // Start in scaling mode
+        let zoom = 1;
+        let panOffset = { x: 0, y: 0 };
+        let isPanning = false;
+        let isDraggingIcon = false;
+        let draggedIcon = null; // { img, src, x, y, gridX, gridY, id, isDead, isPaletteIcon, offsetX, offsetY }
+        let selectedIconForContextMenu = null;
+        let lastMousePos = { x: 0, y: 0 };
+        let iconsOnMap = []; // { img, src, gridX, gridY, id, isDead }
+        // Add a global lookup map
+        let flatIconLookup = new Map(); // Map<src, iconDataObject>
+        let availableIcons = { // Preset icons
+            "Players": [
+            // { src: 'images/player.png', img: null, name: 'Player' },
+                // { src: 'images/farrenBack.png', img: null, name: 'FarrenB' },
+                // { src: 'images/farrenFront.png', img: null, name: 'FarrenF' },
+                { src: 'images/farrenF.png', img: null, name: 'Farren Tanglefoot' },
+                { src: 'images/brorF.png', img: null, name: 'Bror' },
+                { src: 'images/rylanF.png', img: null, name: 'Rylan' },
+                { src: 'images/tRookledust.png', img: null, name: 'Tatiana Rookledust' },
+                { src: 'images/becklin.png', img: null, name: 'Becklin Uth Viharin' },
+                { src: 'images/cudgelIronsmile.png', img: null, name: 'Cudgel Ironsmile' },
+
+            ],
+            "Creatures & NPCs": [
+                { src: 'images/barkeep.png', img: null, name: 'Barkeep' },
+                { src: 'images/dwarf.png', img: null, name: 'Dwarf' },
+                { src: 'images/dwarfW.png', img: null, name: 'Dwarf Woman' },
+                { src: 'images/gnome.png', img: null, name: 'Gnome' },
+                { src: 'images/sorceror.png', img: null, name: 'Human Sorceror' },
+                { src: 'images/oldWoman.png', img: null, name: 'Human Woman' },
+                { src: 'images/halfling.png', img: null, name: 'Halfling Rogue' },
+                { src: 'images/cleric.png', img: null, name: 'Halfling Cleric' },
+                { src: 'images/guard.png', img: null, name: 'Guard' },
+                { src: 'images/guard2.png', img: null, name: 'Guard' },
+                { src: 'images/guard3.png', img: null, name: 'Guard' },
+                { src: 'images/snake.png', img: null, name: 'Snake' },
+                { src: 'images/wolf.png', img: null, name: 'Wolf' },
+                { src: 'images/cat.png', img: null, name: 'Cat' },
+                { src: 'images/ghOwlS.png', img: null, name: 'Owl' },
+                { src: 'images/ghOwlF.png', img: null, name: 'Owl' },
+                { src: 'images/gEagleS.png', img: null, name: 'Giant Eagle' },
+                { src: 'images/gEagleS.png', img: null, name: 'Giant Eagle' },
+                { src: 'images/brownBear.png', img: null, name: 'Brown Bear' },
+                { src: 'images/warhorse.png', img: null, name: 'Warhorse' },
+                { src: 'images/giantFrog.png', img: null, name: 'Giant Frog' },
+                { src: 'images/giantSpider.png', img: null, name: 'Giant Spider' },
+                { src: 'images/giantHyena.png', img: null, name: 'Giant Hyena' },
+                { src: 'images/giantOctopus.png', img: null, name: 'Giant Octopus' },
+                { src: 'images/giantSeahorse.png', img: null, name: 'Giant Seahorse' }
+            ],
+            "Common Enemies:": [
+                { src: 'images/elfBandit.png', img: null, name: 'Bandit' },
+                { src: 'images/bandit1.png', img: null, name: 'Bandit with Crossbow' },
+                { src: 'images/monster.png', img: null, name: 'Monster' },
+                { src: 'images/ghoul.png', img: null, name: 'Ghoul' },
+                { src: 'images/ghoul2.png', img: null, name: 'Ghoul' },
+                { src: 'images/goblinMage.png', img: null, name: 'Goblin Mage' },
+                { src: 'images/goblin2.png', img: null, name: 'Goblin Bandit' },
+                { src: 'images/hobgoblinF.png', img: null, name: 'Hobgoblin Boss' },
+                { src: 'images/hobgoblinCaptain.png', img: null, name: 'Hobgoblin Captain' },
+                { src: 'images/hobgoblinFighter.png', img: null, name: 'Hobgoblin Fighter' },
+                { src: 'images/hobgoblinFighter1.png', img: null, name: 'Hobgoblin Fighter' },
+                { src: 'images/hobgoblinMage.png', img: null, name: 'Hobgoblin Mage' },
+                { src: 'images/hobgoblinPaladin.png', img: null, name: 'Hobgoblin Paladin' },
+                { src: 'images/hobgoblinRanger.png', img: null, name: 'Hobgoblin Ranger' }
+            ],
+            "Dragon Army": [
+                { src: 'images/red_dragon.png', img: null, name: 'Red Dragon' },
+                { src: 'images/redDragon.png', img: null, name: 'Red Dragon' },
+                { src: 'images/greenDragon.png', img: null, name: 'Green Dragon' },
+                { src: 'images/silverDragon.png', img: null, name: 'Silver Dragon' },
+                { src: 'images/bronzeDragon.png', img: null, name: 'Bronze Dragon' },
+                { src: 'images/deathDragon.png', img: null, name: 'Death Dragon' },
+                { src: 'images/aurakF.png', img: null, name: 'Aurak Draconian' },
+                { src: 'images/bozak.png', img: null, name: 'Bozak Draconian' },
+                { src: 'images/bozak.gif', img: null, name: 'Bozak Draconian' },
+                { src: 'images/sivakF.png', img: null, name: 'Sivak Draconian' },
+                { src: 'images/kapakF.png', img: null, name: 'Kapak Draconian' },
+                { src: 'images/daOfficer.png', img: null, name: 'Dragon Army Officer' },
+                { src: 'images/daSoldier1.png', img: null, name: 'Dragon Army Soldier' },
+                { src: 'images/daSoldier2.png', img: null, name: 'Dragon Army Soldier' },
+                { src: 'images/daSorceror.png', img: null, name: 'Dragon Army Sorceror' },
+                { src: 'images/lordSoth.png', img: null, name: 'Lord Soth' }
+            ],
+            "Kalaman Army": [
+                { src: 'images/kSoldierH.png', img: null, name: 'Kalaman Soldier on Horseback' },
+                { src: 'images/kSoldier1.png', img: null, name: 'Kalaman Soldier' },
+                { src: 'images/kSoldier2.png', img: null, name: 'Kalaman Soldier' },
+                { src: 'images/kSoldier3.png', img: null, name: 'Kalaman Soldier' },
+            ], 
+            "Objects and Traps": [
+                { src: 'images/treasureChest.png', img: null, name: 'Gold Chest' },
+                { src: 'images/potions.png', img: null, name: 'Potion Crate' },
+                { src: 'images/armorLoot.png', img: null, name: 'Loot' },
+                { src: 'images/goldLoot.png', img: null, name: 'Gold Bags' },
+                { src: 'images/magicScrolls.png', img: null, name: 'Spellbooks & Scrolls' },
+                { src: 'images/tavernFood.png', img: null, name: 'Food & Drinks' },
+                { src: 'images/trapDoor.png', img: null, name: 'Trap Door' },
+                { src: 'images/books.png', img: null, name: 'Books' },
+
+
+            ]
+        };
+        let nextIconId = 0;
+        let iconInstanceCounters = new Map();
+        let skullImage = null;
+
+        // --- Initialization ---
+
+        function initialize() {
+            resizeCanvas();
+            loadPresetIcons();
+            loadSkullImage();
+            setupEventListeners();
+            updatePalette();
+            draw(); // Initial draw (empty)
+        }
+
+        function resizeCanvas() {
+            const containerWidth = mapContainer.clientWidth;
+            const containerHeight = mapContainer.clientHeight;
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+
+            console.log(`Resizing Canvas. Fullscreen: ${isFullscreen}, Container: ${containerWidth}x${containerHeight}`);
+
+
+            if (isFullscreen && containerWidth > 0 && containerHeight > 0) {
+                 // --- FULLSCREEN: Make canvas fill the container exactly ---
+                 canvas.width = containerWidth;
+                 canvas.height = containerHeight;
+                 console.log(`Fullscreen Canvas Size: ${canvas.width}x${canvas.height}`);
+                 // Note: We don't calculate initial zoom/pan here, that happens in handleFullscreenChange
+            } else if (mapImage && containerWidth > 0 && containerHeight > 0) {
+                // --- NORMAL MODE: Preserve map aspect ratio ---
+                const { width: rotatedWidth, height: rotatedHeight } = getRotatedMapDimensions();
+                if (rotatedWidth === 0 || rotatedHeight === 0) {
+                    // Fallback if map dimensions are invalid
+                    canvas.width = containerWidth * 0.95;
+                    canvas.height = containerHeight * 0.95;
+                    console.warn("Map dimensions invalid during resize.");
+                } else {
+                    const imageAspectRatio = rotatedWidth / rotatedHeight;
+                    const containerAspectRatio = containerWidth / containerHeight;
+
+                    if (imageAspectRatio > containerAspectRatio) {
+                        canvas.width = containerWidth;
+                        canvas.height = containerWidth / imageAspectRatio;
+                    } else {
+                        canvas.height = containerHeight;
+                        canvas.width = containerHeight * imageAspectRatio;
+                    }
+                     console.log(`Normal Mode Canvas Size: ${canvas.width}x${canvas.height}`);
+                }
+            } else if (containerWidth > 0 && containerHeight > 0) {
+                 // --- NO MAP LOADED: Default size ---
+                 canvas.width = containerWidth * 0.95;
+                 canvas.height = containerHeight * 0.95;
+                 console.log(`No Map Canvas Size: ${canvas.width}x${canvas.height}`);
+            } else {
+                 console.warn("Container has zero dimensions during resize.");
+                 // Avoid setting zero width/height which can cause issues
+                 // canvas.width = 100; // Or some minimal default
+                 // canvas.height = 100;
+            }
+
+            // We call draw explicitly after setting zoom/pan elsewhere (like handleFullscreenChange or centerMap)
+            // to avoid drawing with potentially incorrect transforms right after resize.
+            // draw(); // Maybe remove this immediate draw call? Let caller handle it.
+        }
+
+        function loadPresetIcons() {
+            flatIconLookup.clear(); // Clear previous lookup data
+            // Iterate through categories
+            for (const category in availableIcons) {
+                if (availableIcons.hasOwnProperty(category)) {
+                    availableIcons[category].forEach(iconData => { // Use the category array
+                        const img = new Image();
+                        img.onload = () => {
+                            iconData.img = img;
+                            updatePalette(); // Update when image loads
+                        };
+                        img.onerror = () => {
+                            console.error(`Failed to load preset icon: ${iconData.src}`);
+                            // Remove or mark the icon as unloadable if needed
+                            iconData.img = null; // Mark as failed
+                            updatePalette(); // Update to remove/show failure?
+                        };
+                        img.src = iconData.src;
+                        img.draggable = true; // Make palette icons draggable
+                        img.dataset.iconSrc = iconData.src; // Store src for drag identification
+                        // Populate the flat lookup map
+                        if (!flatIconLookup.has(iconData.src)) {
+                             flatIconLookup.set(iconData.src, iconData);
+                        } else {
+                             console.warn(`Duplicate icon src found: ${iconData.src}`);
+                        }
+                    });
+                }
+            }
+            updatePalette();
+        }
+       
+        function loadSkullImage() {
+            skullImage = new Image();
+            skullImage.onload = () => {
+                console.log("Skull overlay image loaded.");
+                // Optional: Call draw() here if you want an immediate redraw once it loads,
+                // though it will redraw on next interaction anyway.
+                // draw();
+            };
+            skullImage.onerror = () => {
+                console.error("Failed to load skull.png overlay image.");
+                skullImage = null; // Set back to null if loading fails
+            };
+            skullImage.src = 'images/skull.png'; 
+        }
+
+        function updatePalette() {
+            const container = document.getElementById('iconCategoriesContainer');
+            // Clear previous dropdowns (keep the "Icons:" span)
+            const existingDetails = container.querySelectorAll('details');
+            existingDetails.forEach(details => details.remove());
+
+            // Build dropdowns for each category
+            for (const category in availableIcons) {
+                if (availableIcons.hasOwnProperty(category)) {
+                    const iconsInCategory = availableIcons[category];
+
+                    // Create <details> and <summary> elements
+                    const detailsElement = document.createElement('details');
+                    const summaryElement = document.createElement('summary');
+                    summaryElement.textContent = category; // Category name
+                    detailsElement.appendChild(summaryElement);
+
+                    // Create content div for icons
+                    const contentElement = document.createElement('div');
+                    contentElement.className = 'dropdown-content';
+
+                    // Add loaded icons to the content div
+                    iconsInCategory.forEach(iconData => {
+                        if (iconData.img) { // Only add if image is loaded
+                            const imgElement = iconData.img.cloneNode();
+                            imgElement.style.width = '30px';
+                            imgElement.style.height = '30px';
+                            imgElement.style.border = '1px solid #ccc';
+                            imgElement.style.cursor = 'grab';
+                            imgElement.draggable = true;
+                            imgElement.dataset.iconSrc = iconData.src;
+                            imgElement.title = iconData.name || category; // Tooltip
+                            contentElement.appendChild(imgElement);
+
+                            // Add drag listener
+                            imgElement.addEventListener('dragstart', handlePaletteDragStart);
+                        }
+                         // Optional: Add placeholder or text for failed icons?
+                         // else if (iconData.img === null && iconData.src) { // Check if load failed
+                         //    const failedText = document.createElement('span');
+                         //    failedText.textContent = `❗ ${iconData.name || iconData.src}`;
+                         //    failedText.title = `Failed to load ${iconData.src}`;
+                         //    failedText.style.fontSize = '0.8em';
+                         //    contentElement.appendChild(failedText);
+                         // }
+                    });
+
+                    // Only add the dropdown if it contains icons
+                    if (contentElement.hasChildNodes()) {
+                        detailsElement.appendChild(contentElement);
+                        container.appendChild(detailsElement);
+                    }
+                }
+            }
+        }
+
+
+        // --- Event Listeners ---
+
+        function setupEventListeners() {
+            window.addEventListener('resize', resizeCanvas);
+            mapUpload.addEventListener('change', handleMapUpload);
+            iconUpload.addEventListener('change', handleIconUpload);
+            gridSizeSlider.addEventListener('input', handleGridSizeChange);
+            confirmScaleButton.addEventListener('click', handleConfirmScale);
+            zoomSlider.addEventListener('input', handleZoomChange);
+            rotateLeftButton.addEventListener('click', handleRotateLeft);
+            rotateRightButton.addEventListener('click', handleRotateRight);
+
+            // Keyboard zoom
+            window.addEventListener('keydown', handleKeyDown);
+
+            // Canvas interactions
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('mouseleave', handleMouseLeave); // Stop panning/dragging if mouse leaves
+            canvas.addEventListener('wheel', handleWheelZoom, { passive: false }); // Use wheel for zooming
+            canvas.addEventListener('dragover', handleDragOver); // Needed for dropping
+            canvas.addEventListener('drop', handleDrop); // Handle dropping palette icons
+            canvas.addEventListener('contextmenu', handleContextMenu); // Right-click
+
+            // Context Menu Buttons
+            iconContextMenu.addEventListener('click', handleContextMenuClick); // Use event delegation or individual listeners
+            document.addEventListener('click', hideContextMenu); // Hide menu if clicking elsewhere
+            fullscreenButton.addEventListener('click', toggleFullScreen);
+            document.addEventListener('fullscreenchange', handleFullscreenChange);
+            // Add vendor specific listeners too if needed for older browsers
+            document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+        }
+        // --- Fullscreen Functions ---
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement &&
+                !document.mozFullScreenElement && // Firefox
+                !document.webkitFullscreenElement && // Chrome, Safari & Opera
+                !document.msFullscreenElement) { // IE/Edge
+                // Enter fullscreen
+                if (mapContainer.requestFullscreen) {
+                    mapContainer.requestFullscreen();
+                } else if (mapContainer.mozRequestFullScreen) { // Firefox
+                    mapContainer.mozRequestFullScreen();
+                } else if (mapContainer.webkitRequestFullscreen) { // Chrome, Safari & Opera
+                    mapContainer.webkitRequestFullscreen();
+                } else if (mapContainer.msRequestFullscreen) { // IE/Edge
+                    mapContainer.msRequestFullscreen();
+                }
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.mozCancelFullScreen) { // Firefox
+                    document.mozCancelFullScreen();
+                } else if (document.webkitExitFullscreen) { // Chrome, Safari & Opera
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) { // IE/Edge
+                    document.msExitFullscreen();
+                }
+            }
+        }
+
+        function handleFullscreenChange() {
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+
+            // Resize canvas dimensions IMMEDIATELY to potentially help layout
+            resizeCanvas();
+
+            if (isFullscreen) {
+                fullscreenButton.textContent = 'Exit Fullscreen';
+                console.log("Entered fullscreen. Canvas resized.");
+
+                // Use setTimeout to delay calculations/drawing slightly
+                setTimeout(() => {
+                    console.log("Timeout: Processing fullscreen entry drawing.");
+
+                    if (mapImage) {
+                        // Calculate Fill Zoom and Center Pan using current canvas dimensions
+                        const { width: rotatedWidth, height: rotatedHeight } = getRotatedMapDimensions();
+                        const screenWidth = canvas.width; // Read latest size
+                        const screenHeight = canvas.height;
+
+                        if (rotatedWidth > 0 && rotatedHeight > 0 && screenWidth > 0 && screenHeight > 0) {
+                            const mapAspect = rotatedWidth / rotatedHeight;
+                            const screenAspect = screenWidth / screenHeight;
+
+                            let fillZoom;
+                            if (mapAspect >= screenAspect) { // Fit height
+                                fillZoom = screenHeight / rotatedHeight;
+                            } else { // Fit width
+                                fillZoom = screenWidth / rotatedWidth;
+                            }
+
+                            zoom = fillZoom;
+                            zoomSlider.value = zoom;
+                            zoomValue.textContent = zoom.toFixed(2);
+
+                            panOffset.x = (screenWidth - rotatedWidth * zoom) / 2;
+                            panOffset.y = (screenHeight - rotatedHeight * zoom) / 2;
+
+                            console.log(`Timeout: Fill Zoom: ${zoom}, Pan: ${panOffset.x}, ${panOffset.y}`);
+
+                        } else {
+                            console.warn("Timeout: Cannot calculate fill zoom - invalid dimensions.");
+                            zoom = 1;
+                            zoomSlider.value = 1;
+                            zoomValue.textContent = '1.0';
+                            centerMap();
+                        }
+                    } else { // No map loaded
+                        zoom = 1;
+                        panOffset = { x: 0, y: 0 };
+                    }
+
+                    // Draw the initial fullscreen view *inside* timeout
+                    console.log("Timeout: Calling draw() for fullscreen entry.");
+                    draw();
+                }, 10); // Delay by 10 milliseconds (adjust if needed)
+
+            } else { // Exiting fullscreen
+                fullscreenButton.textContent = 'Enter Fullscreen';
+                 console.log("Exited fullscreen. Canvas resized."); // resize already happened above
+
+                 // Use setTimeout for exit consistency
+                 setTimeout(() => {
+                    console.log("Timeout: Processing fullscreen exit drawing.");
+                    centerMap(); // Recenter
+                    console.log("Timeout: Calling draw() for fullscreen exit.");
+                    draw(); // Draw restored view
+                 }, 10); // Delay by 10 milliseconds
+            }
+        }
+
+        function handleMapUpload(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    mapImage = new Image();
+                    mapImage.onload = () => {
+                        console.log("Map image loaded:", mapImage.width, mapImage.height);
+                        // Reset state for new map
+                        isScaling = true;
+                        currentRotation = 0; // Reset rotation
+                        zoom = 1; // Reset zoom
+                        panOffset = { x: 0, y: 0 }; // Reset pan
+                        iconsOnMap = []; // Clear icons
+                        scalingControls.classList.remove('hidden');
+                        rotationControls.classList.remove('hidden'); // Show rotation buttons
+                        zoomControls.classList.add('hidden');
+                        gridSizeSlider.value = 50; // Reset grid slider
+                        gridSizeValue.textContent = 50;
+                        gridSize = 50;
+                        zoomSlider.value = 1; // Reset zoom slider
+                        zoomValue.textContent = '1.0';
+
+                        resizeCanvas(); // Resize canvas based on new image (will use rotation=0)
+                        centerMap(); // Center the map (will use zoom=1 initially)
+                        draw(); // Draw the newly loaded map
+                    };
+                    mapImage.onerror = () => {
+                        alert("Error loading map image.");
+                        mapImage = null;
+                    }
+                    mapImage.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            } else {
+                alert("Please select a valid image file.");
+            }
+        }
+
+        function handleIconUpload(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const newIconSrc = e.target.result; // This is a data URL
+
+                    // Check if already exists by src (data URL can be long)
+                    if (flatIconLookup.has(newIconSrc)) return; // Already added
+
+                    const img = new Image();
+                    img.onload = () => {
+                         const iconData = {
+                             src: newIconSrc, // Use data URL as src
+                             img: img,
+                             name: file.name.replace(/\.[^/.]+$/, "") // Use filename without extension
+                         };
+
+                         // Add to a default category or create one
+                         const uploadCategory = "Uploaded Icons";
+                         if (!availableIcons[uploadCategory]) {
+                             availableIcons[uploadCategory] = [];
+                         }
+                         availableIcons[uploadCategory].push(iconData);
+
+                         // Add to flat lookup
+                         flatIconLookup.set(iconData.src, iconData);
+
+                         updatePalette(); // Refresh the UI
+                    };
+                     img.onerror = () => alert("Error loading uploaded icon image.");
+                    img.src = newIconSrc;
+                }
+                reader.readAsDataURL(file);
+            } else {
+                alert("Please select a valid image file for the icon.");
+            }
+        }
+
+        function handleGridSizeChange() {
+            if (!isScaling || !mapImage) return; // Only allow during scaling phase
+            gridSize = parseInt(gridSizeSlider.value, 10);
+            gridSizeValue.textContent = gridSize;
+            draw();
+        }
+
+        function handleConfirmScale() {
+            if (!mapImage) {
+                alert("Please upload a map image first.");
+                return;
+            }
+            isScaling = false;
+            scalingControls.classList.add('hidden');
+            rotationControls.classList.add('hidden'); // Hide rotation buttons
+            zoomControls.classList.remove('hidden');
+            console.log(`Scale confirmed: 1 grid square = ${gridSize} pixels on base image.`);
+            draw();
+        }
+
+        function handleZoomChange() {
+            if (isScaling) return; // No zooming during scaling
+            const newZoom = parseFloat(zoomSlider.value);
+            applyZoom(newZoom);
+             zoomValue.textContent = newZoom.toFixed(1);
+        }
+
+        function handleKeyDown(event) {
+             if (isScaling) return;
+
+             let zoomChanged = false;
+             let newZoom = zoom;
+
+             if (event.key === 'ArrowLeft') {
+                 newZoom = Math.max(0.1, zoom - 0.1);
+                 zoomChanged = true;
+             } else if (event.key === 'ArrowRight') {
+                 newZoom = Math.min(5, zoom + 0.1);
+                 zoomChanged = true;
+             }
+
+            if (zoomChanged && newZoom !== zoom) {
+                applyZoom(newZoom);
+                zoomSlider.value = newZoom;
+                zoomValue.textContent = newZoom.toFixed(1);
+            }
+        }
+
+        function handleRotateLeft() {
+            if (!mapImage || !isScaling) return; // Only rotate during scaling
+            currentRotation = (currentRotation - 90 + 360) % 360; // Rotate CCW
+            console.log("Rotated Left. New angle:", currentRotation);
+            onRotationChange();
+        }
+
+        function handleRotateRight() {
+            if (!mapImage || !isScaling) return; // Only rotate during scaling
+            currentRotation = (currentRotation + 90) % 360; // Rotate CW
+             console.log("Rotated Right. New angle:", currentRotation);
+            onRotationChange();
+        }
+
+        function onRotationChange() {
+            // Rotation changes effective dimensions, so resize canvas and recenter
+            resizeCanvas();
+            centerMap();
+            draw();
+        }
+
+        function getRotatedMapDimensions() {
+            if (!mapImage) return { width: 0, height: 0 };
+            const isSideways = currentRotation === 90 || currentRotation === 270;
+            return {
+                width: isSideways ? mapImage.height : mapImage.width,
+                height: isSideways ? mapImage.width : mapImage.height
+            };
+        }
+
+        // Helper function to center the map view (using current zoom)
+        function centerMap() {
+             if (!mapImage) return;
+             const { width: rotatedWidth, height: rotatedHeight } = getRotatedMapDimensions();
+
+             // Check for valid dimensions before calculating offset
+             if (canvas.width > 0 && canvas.height > 0 && rotatedWidth > 0 && rotatedHeight > 0) {
+                 // Calculate pan to center the *rotated* map within the current canvas size at the current zoom
+                 panOffset = {
+                     x: (canvas.width - rotatedWidth * zoom) / 2,
+                     y: (canvas.height - rotatedHeight * zoom) / 2
+                 };
+                  console.log(`Centered Map. Zoom: ${zoom}, Pan: ${panOffset.x}, ${panOffset.y}`);
+             } else {
+                  console.warn("Cannot center map - invalid dimensions.");
+                  panOffset = { x: 0, y: 0 }; // Reset pan if centering fails
+             }
+        }
+
+        function handleMouseMove(event) {
+            // Allow panning updates even during scaling
+            if (!mapImage) return;
+
+            const currentMousePos = getMousePos(canvas, event);
+            const dx = currentMousePos.x - lastMousePos.x;
+            const dy = currentMousePos.y - lastMousePos.y;
+
+            if (isPanning) { // Panning can happen during or after scaling
+                panOffset.x += dx;
+                panOffset.y += dy;
+                draw();
+            } else if (isDraggingIcon && draggedIcon && !isScaling) { // Icon dragging only after scaling
+                draggedIcon.x = currentMousePos.x - draggedIcon.offsetX;
+                draggedIcon.y = currentMousePos.y - draggedIcon.offsetY;
+                draw();
+            }
+
+            lastMousePos = currentMousePos;
+
+            // Update cursor style
+            if (!isPanning && !isDraggingIcon) {
+                let cursorStyle = 'grab'; // Default panning cursor
+                // Only check for icon hover cursor AFTER scaling is done
+                if (!isScaling) {
+                    const iconUnderMouse = getIconAtScreenPos(currentMousePos.x, currentMousePos.y);
+                    if (iconUnderMouse) {
+                        cursorStyle = 'grab'; // Or 'pointer'? Grab might be better for consistency
+                    }
+                }
+                canvas.style.cursor = cursorStyle;
+
+            } else if (isDraggingIcon) { // Should only be true if !isScaling
+                canvas.style.cursor = 'grabbing';
+            } else if (isPanning) {
+                canvas.style.cursor = 'grabbing';
+            }
+        }
+
+        function handleMouseUp(event) {
+            console.log("--- handleMouseUp START ---"); // LOG: Start
+            if (!mapImage) {
+                console.log("MouseUp: No map image, exiting."); // LOG
+                return;
+            }
+            let stateChanged = false; // Flag to see if we need to draw
+
+            // Use a temporary variable to hold the dragged icon data,
+            // as the global 'draggedIcon' might be cleared unexpectedly elsewhere.
+            const currentDraggedIconData = draggedIcon;
+            const wasDraggingIcon = isDraggingIcon; // Capture initial state
+
+            // Handle end of panning first
+            if (isPanning) {
+                console.log("MouseUp: Handling end of panning."); // LOG
+                isPanning = false;
+                stateChanged = true;
+            }
+
+            // Now, specifically handle the icon drop if we *were* dragging
+            if (wasDraggingIcon && currentDraggedIconData && !isScaling) {
+                console.log("MouseUp: Handling end of icon drag. Icon ID:", currentDraggedIconData.id); // LOG
+                stateChanged = true; // Will need redraw
+
+                const currentMousePos = getMousePos(canvas, event);
+                console.log("MouseUp: Mouse Pos:", currentMousePos); // LOG
+
+                let gridX = null, gridY = null;
+                try {
+                    // Calculate drop grid square based on CURSOR position
+                    const gridResult = screenToGrid(currentMousePos.x, currentMousePos.y);
+                    gridX = gridResult.gridX;
+                    gridY = gridResult.gridY;
+                    console.log("MouseUp: screenToGrid result:", {gridX, gridY}); // LOG
+                } catch (error) {
+                    console.error("MouseUp: Error in screenToGrid:", error); // LOG Error
+                    // If grid calc fails, maybe default to restoring?
+                    gridX = null; gridY = null; // Ensure it triggers restore logic below
+                    console.log("MouseUp: Forcing restore due to screenToGrid error."); // LOG
+                }
+
+                // Logic to place or restore the icon
+                if (gridX !== null && gridY !== null) { // Dropped in a valid grid square
+                    console.log(`MouseUp: Dropped in valid grid (${gridX}, ${gridY})`); // LOG
+                    // Prepare the data with the new position
+                    const iconDataToPlace = {
+                        id: currentDraggedIconData.id, src: currentDraggedIconData.src, img: currentDraggedIconData.img,
+                        gridX: gridX, gridY: gridY, isDead: currentDraggedIconData.isDead,
+                        instanceNumber: currentDraggedIconData.instanceNumber,
+                        size: currentDraggedIconData.size, // Ensure size is preserved
+                        iconRotation: currentDraggedIconData.iconRotation,
+                        creatureSizeCategory: currentDraggedIconData.creatureSizeCategory
+                    };
+                    // Add the icon back to the main array
+                    console.log(`MouseUp: Pushing icon back to map array. Current length: ${iconsOnMap.length}`); // LOG
+                    iconsOnMap.push(iconDataToPlace);
+                    console.log(`MouseUp: Pushed icon. New length: ${iconsOnMap.length}`); // LOG
+
+                } else { // Dropped outside valid grid OR screenToGrid failed
+                    console.log("MouseUp: Dropped outside valid grid or error occurred. Restoring."); // LOG
+                    if (currentDraggedIconData.originalGridX !== undefined) {
+                        // Prepare data with original position
+                        const iconToRestore = {
+                            id: currentDraggedIconData.id, src: currentDraggedIconData.src, img: currentDraggedIconData.img,
+                            gridX: currentDraggedIconData.originalGridX, gridY: currentDraggedIconData.originalGridY,
+                            isDead: currentDraggedIconData.isDead, instanceNumber: currentDraggedIconData.instanceNumber,
+                            size: currentDraggedIconData.size, // Ensure size is preserved
+                            iconRotation: currentDraggedIconData.iconRotation,
+                            creatureSizeCategory: currentDraggedIconData.creatureSizeCategory 
+                        };
+                        // Add the icon back at its original spot
+                        console.log(`MouseUp: Pushing icon back for restore. Current length: ${iconsOnMap.length}`); // LOG
+                        iconsOnMap.push(iconToRestore);
+                        console.log(`MouseUp: Pushed icon for restore. New length: ${iconsOnMap.length}`); // LOG
+                    } else {
+                        console.warn("MouseUp: Cannot restore - original pos unknown."); // LOG
+                    }
+                }
+
+                // --- Crucially, reset state AFTER handling the drop/restore ---
+                console.log("MouseUp: Resetting dragging state variables."); // LOG
+                isDraggingIcon = false;
+                draggedIcon = null;
+
+            } else if (wasDraggingIcon) {
+                // This block catches cases where isDraggingIcon was true initially,
+                // but something was wrong (e.g., draggedIcon was null, or isScaling became true)
+                console.warn(`MouseUp: Dragging flag was true, but condition failed. Resetting. isScaling: ${isScaling}, draggedIcon found: ${!!currentDraggedIconData}`); // LOG
+                stateChanged = true;
+                // Attempt safety restore if possible
+                if(currentDraggedIconData && currentDraggedIconData.originalGridX !== undefined) {
+                     const iconToRestore = { /* ... restore data ... */
+                        id: currentDraggedIconData.id, src: currentDraggedIconData.src, img: currentDraggedIconData.img,
+                        gridX: currentDraggedIconData.originalGridX, gridY: currentDraggedIconData.originalGridY,
+                        isDead: currentDraggedIconData.isDead, instanceNumber: currentDraggedIconData.instanceNumber,
+                        iconRotation: currentDraggedIconData.iconRotation
+                     };
+                    console.log("MouseUp: Safety restore. Pushing icon back."); // LOG
+                    iconsOnMap.push(iconToRestore);
+                }
+                 // Ensure state is reset even in this cleanup case
+                isDraggingIcon = false;
+                draggedIcon = null;
+            }
+
+            // Reset cursor based on final state
+            if (!isPanning && !isDraggingIcon) {
+                // console.log("MouseUp: Resetting cursor to 'grab'."); // LOG
+                canvas.style.cursor = 'grab';
+            } else {
+                // This case should ideally not happen after a drop, but keep for safety
+                console.log(`MouseUp: Cursor remains 'grabbing'. Panning: ${isPanning}, Dragging: ${isDraggingIcon}`); // LOG
+                canvas.style.cursor = 'grabbing';
+            }
+
+            // Redraw if needed
+            if (stateChanged) {
+                console.log("MouseUp: Calling draw() because state changed."); // LOG
+                draw();
+            }
+            console.log("--- handleMouseUp END ---"); // LOG: End
+        }
+
+        function handleMouseDown(event) {
+            hideContextMenu();
+            // Allow panning even during scaling, but not icon interaction yet
+            if (!mapImage) return; // Still need map image
+
+            lastMousePos = getMousePos(canvas, event);
+
+            // If NOT scaling, check for icons first, then allow panning
+            if (!isScaling) {
+                const clickedIcon = getIconAtScreenPos(lastMousePos.x, lastMousePos.y);
+                if (event.button === 0) { // Left mouse button
+                    if (clickedIcon) {
+                        // --- Icon Dragging Logic ---
+                        isDraggingIcon = true;
+                        draggedIcon = {
+                            ...clickedIcon,
+                            originalGridX: clickedIcon.gridX,
+                            originalGridY: clickedIcon.gridY,
+                            isPaletteIcon: false
+                        };
+                        const iconScreenPos = gridToScreen(clickedIcon.gridX, clickedIcon.gridY);
+                        draggedIcon.offsetX = lastMousePos.x - iconScreenPos.x;
+                        draggedIcon.offsetY = lastMousePos.y - iconScreenPos.y;
+                        canvas.style.cursor = 'grabbing';
+                        // Remove original icon from map temporarily during drag
+                        iconsOnMap = iconsOnMap.filter(icon => icon.id !== clickedIcon.id);
+                        draw(); // Redraw WITHOUT the icon that's being dragged
+                        // --- End Icon Dragging Logic ---
+                    } else {
+                        // Start panning if not clicking an icon (and not scaling)
+                        isPanning = true;
+                        canvas.style.cursor = 'grabbing';
+                    }
+                }
+            }
+            // If scaling IS true, always initiate panning on left-click
+            else if (event.button === 0) { // 'else if' ensures this runs only when isScaling is true
+                isPanning = true;
+                canvas.style.cursor = 'grabbing';
+            }
+        }
+
+        function handleMouseLeave(event) {
+            // Check if the left mouse button is potentially pressed while leaving
+            // Note: event.buttons is more reliable than event.which
+            const isLeftButtonDown = event.buttons === 1; // 1 means left button is down
+
+            // Stop panning ONLY if mouse leaves canvas AND button is STILL down
+            if (isPanning && isLeftButtonDown) {
+                console.log("MouseLeave: Stopping panning because mouse left while button down.");
+                isPanning = false;
+                // Cursor will be reset by mouseup later if button comes up over canvas,
+                // or stays 'grabbing' until interaction ends if button comes up outside.
+                // We could potentially reset cursor to 'grab' here if needed, but let's hold off.
+            }
+
+            // Stop/Cancel icon drag ONLY if NOT scaling AND button is STILL down
+            if (isDraggingIcon && !isScaling && isLeftButtonDown) {
+                console.log("MouseLeave: Cancelling drag because mouse left while button down.");
+                // Restore icon if it was from the map
+                if(draggedIcon && draggedIcon.originalGridX !== undefined) {
+                    const iconToRestore = {
+                        id: draggedIcon.id, src: draggedIcon.src, img: draggedIcon.img,
+                        gridX: draggedIcon.originalGridX, gridY: draggedIcon.originalGridY,
+                        isDead: draggedIcon.isDead, instanceNumber: draggedIcon.instanceNumber,
+                        size: draggedIcon.size, // Ensure size is preserved
+                        iconRotation: draggedIcon.iconRotation,
+                        creatureSizeCategory: currentDraggedIconData.creatureSizeCategory 
+                    };
+                    iconsOnMap.push(iconToRestore);
+                }
+                isDraggingIcon = false; // Reset state as drag is cancelled
+                draggedIcon = null;
+                canvas.style.cursor = 'grab'; // Reset cursor as drag is cancelled
+                draw(); // Redraw to show restored/removed icon
+            }
+            // No explicit 'else' needed here - if the button is UP when leaving,
+            // we assume handleMouseUp already did or will do the necessary cleanup.
+        }
+
+        function handleWheelZoom(event) {
+            if (!mapImage || isScaling) return;
+            event.preventDefault(); // Prevent page scrolling
+
+            const zoomFactor = 1.1;
+            const mousePos = getMousePos(canvas, event);
+            let newZoom;
+
+            if (event.deltaY < 0) {
+                // Zoom in
+                newZoom = Math.min(5, zoom * zoomFactor);
+            } else {
+                // Zoom out
+                newZoom = Math.max(0.1, zoom / zoomFactor);
+            }
+
+            if (newZoom !== zoom) {
+                applyZoom(newZoom, mousePos); // Pass mousePos for centered zoom
+                zoomSlider.value = newZoom;
+                zoomValue.textContent = newZoom.toFixed(1);
+            }
+        }
+
+        function applyZoom(newZoom, zoomCenter = null) {
+            if (!mapImage || isScaling) return;
+
+             // Default zoom center to canvas center if not provided
+             if (!zoomCenter) {
+                 zoomCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+             }
+
+             // Calculate world coordinates under the mouse cursor BEFORE zoom
+             const worldPos = screenToWorld(zoomCenter.x, zoomCenter.y);
+
+            zoom = newZoom;
+
+             // Calculate where the world coordinate should be AFTER zoom and adjust pan
+             // newScreenPos = worldToScreen(worldPos.x, worldPos.y)
+             // We want newScreenPos to be equal to zoomCenter.
+             // zoomCenter.x = (worldPos.x * zoom) + panOffset.x
+             // zoomCenter.y = (worldPos.y * zoom) + panOffset.y
+             // So, panOffset.x = zoomCenter.x - (worldPos.x * zoom)
+             // And panOffset.y = zoomCenter.y - (worldPos.y * zoom)
+
+             panOffset.x = zoomCenter.x - (worldPos.x * zoom);
+             panOffset.y = zoomCenter.y - (worldPos.y * zoom);
+
+
+            draw();
+        }
+
+
+        function handlePaletteDragStart(event) {
+            const iconSrc = event.target.dataset.iconSrc;
+            const iconData = flatIconLookup.get(iconSrc); // Use the lookup Map
+            if (!iconData || !iconData.img) return;
+
+             // Use a minimal representation for the drag data
+            event.dataTransfer.setData('text/plain', iconSrc); // Identify the icon being dragged
+            event.dataTransfer.effectAllowed = 'copy';
+
+             // Create a temporary draggedIcon state for visual feedback if needed
+             // (Actual placement happens on drop)
+             // Optional: Could create a ghost image for dragging
+             // const dragImg = iconData.img.cloneNode();
+             // event.dataTransfer.setDragImage(dragImg, 15, 15); // Center offset
+
+             // Prepare a placeholder for potential drop
+             draggedIcon = {
+                 src: iconData.src,
+                 img: iconData.img,
+                 isPaletteIcon: true,
+                 offsetX: 15, // Approx center offset for initial placement
+                 offsetY: 15
+             };
+             isDraggingIcon = true; // Set flag
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault(); // Necessary to allow dropping
+             if (isDraggingIcon && draggedIcon && draggedIcon.isPaletteIcon) {
+                event.dataTransfer.dropEffect = 'copy';
+
+                 // Update visual position while dragging over canvas (optional)
+                 const currentMousePos = getMousePos(canvas, event);
+                 draggedIcon.x = currentMousePos.x - draggedIcon.offsetX;
+                 draggedIcon.y = currentMousePos.y - draggedIcon.offsetY;
+                 // Could add draw() here for live preview, but might be slow
+             } else {
+                event.dataTransfer.dropEffect = 'none'; // Don't allow drop if not dragging palette icon
+             }
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+             if (isScaling) return; // Don't drop during scaling
+
+            const iconSrc = event.dataTransfer.getData('text/plain');
+            const iconData = flatIconLookup.get(iconSrc);
+
+            if (iconData && iconData.img) {
+                 const dropPos = getMousePos(canvas, event);
+                 // Snap to grid center based on drop position
+                 const { gridX, gridY } = screenToGrid(dropPos.x, dropPos.y);
+
+                if (gridX !== null && gridY !== null) {
+                    let instanceNumber = 0; // Default to 0 if not tracking needed
+                    let currentCount = iconInstanceCounters.get(iconData.src) || 0; // Get current count or start at 0
+                    currentCount++; // Increment for this new instance
+                    instanceNumber = currentCount; // Assign the new number
+                    iconInstanceCounters.set(iconData.src, currentCount); // Store the updated count
+                    console.log(`Assigning number ${instanceNumber} to icon src: ${iconData.src}`);
+
+                    const newIconId = `icon-${nextIconId++}`;
+                    // Place the new icon
+                    const newIcon = {
+                        id: `icon-${nextIconId++}`,
+                        src: iconData.src,
+                        img: iconData.img, // Reference the loaded image object
+                        gridX: gridX,
+                        gridY: gridY,
+                        isDead: false,
+                        instanceNumber: instanceNumber,
+                        size: 1, // Default size
+                        iconRotation: 0, // Default rotation
+                        creatureSizeCategory: 'Medium'
+                    };
+                    iconsOnMap.push(newIcon);
+                    console.log("Placed new icon:", newIcon);
+                } else {
+                     console.log("Icon dropped outside grid area.");
+                 }
+            } else {
+                 console.error("Dropped item is not a recognized icon:", iconSrc);
+            }
+            // Reset dragging state regardless of success
+            isDraggingIcon = false;
+            draggedIcon = null;
+            draw();
+        }
+
+        function handleContextMenu(event) {
+             event.preventDefault(); // Prevent browser's default context menu
+             if (isScaling) return;
+
+             const mousePos = getMousePos(canvas, event);
+             selectedIconForContextMenu = getIconAtScreenPos(mousePos.x, mousePos.y);
+
+             if (selectedIconForContextMenu) {
+                 positionContextMenu(event.clientX, event.clientY);
+                 // Update menu item text based on state
+                 ctxMarkDead.textContent = selectedIconForContextMenu.isDead ? 'Mark Alive' : 'Mark Dead';
+             } else {
+                 hideContextMenu();
+             }
+        }
+
+        function positionContextMenu(x, y) {
+            // Get the bounding rect of the map container (our new offset parent)
+            // This is needed because the menu's absolute positioning is now relative to it.
+            const containerRect = mapContainer.getBoundingClientRect();
+
+            // Calculate position relative to the container
+            const menuX = x - containerRect.left;
+            const menuY = y - containerRect.top;
+
+            // Apply the calculated position
+            iconContextMenu.style.left = `${x}px`;
+            iconContextMenu.style.top = `${y}px`;
+            iconContextMenu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+            iconContextMenu.style.display = 'none';
+            selectedIconForContextMenu = null;
+        }
+
+        function handleContextMenuClick(event) {
+            if (!selectedIconForContextMenu) return;
+
+            const action = event.target.id;
+            let needsDraw = false; // Flag if we need to redraw
+            const index = iconsOnMap.findIndex(icon => icon.id === selectedIconForContextMenu.id); // Find index once
+
+            if (index === -1) { // Safety check if icon was somehow removed
+                hideContextMenu();
+                return;
+            }
+
+            if (action === 'ctxMove') {
+                // Initiate a drag from context menu (optional, drag is default)
+                isDraggingIcon = true;
+                draggedIcon = { ...selectedIconForContextMenu }; // Clone
+                const iconScreenPos = gridToScreen(selectedIconForContextMenu.gridX, selectedIconForContextMenu.gridY);
+                // Estimate offset if needed, or just let next mouse move handle it
+                draggedIcon.offsetX = 15; // Placeholder offset
+                draggedIcon.offsetY = 15;
+                draggedIcon.isPaletteIcon = false;
+                iconsOnMap = iconsOnMap.filter(icon => icon.id !== selectedIconForContextMenu.id); // Remove from map
+                canvas.style.cursor = 'grabbing';
+                // Note: User needs to mousedown+drag after this to actually move
+
+            } else if (action === 'ctxMarkDead') {
+                iconsOnMap[index].isDead = !iconsOnMap[index].isDead;
+                // Update the actual icon in the array
+                needsDraw = true;
+            } else if (action === 'ctxRemove') {
+                iconsOnMap.splice(index, 1); // Use splice for efficiency
+                needsDraw = true;
+            }
+            if (action === 'ctxSetMedium') { // Set to Medium 1x1
+                if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Medium') {
+                    iconsOnMap[index].size = 1;
+                    iconsOnMap[index].creatureSizeCategory = 'Medium';
+                    needsDraw = true;
+                }
+             } else if (action === 'ctxSetSmall') { // Set to Small (Visual) 1x1
+                 if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Small') {
+                     iconsOnMap[index].size = 1; // Still occupies 1x1 grid
+                     iconsOnMap[index].creatureSizeCategory = 'Small';
+                     needsDraw = true;
+                 }
+             } else if (action === 'ctxSetLarge') { // Set to Large 2x2
+                 if (iconsOnMap[index].size !== 2 || iconsOnMap[index].creatureSizeCategory !== 'Large') {
+                     iconsOnMap[index].size = 2;
+                     iconsOnMap[index].creatureSizeCategory = 'Large'; // Assume Large visual
+                     needsDraw = true;
+                 }
+             } else if (action === 'ctxSetHuge') { // Set to Huge 3x3
+                 if (iconsOnMap[index].size !== 3 || iconsOnMap[index].creatureSizeCategory !== 'Huge') {
+                     iconsOnMap[index].size = 3;
+                     iconsOnMap[index].creatureSizeCategory = 'Huge';
+                     needsDraw = true;
+                 }
+             } else if (action === 'ctxSetGarg') { // Set to Gargantuan 4x4
+                 if (iconsOnMap[index].size !== 4 || iconsOnMap[index].creatureSizeCategory !== 'Gargantuan') {
+                     iconsOnMap[index].size = 4;
+                     iconsOnMap[index].creatureSizeCategory = 'Gargantuan';
+                     needsDraw = true;
+                 }
+             }
+            // --- Handle Rotation Changes ---
+            else if (action === 'ctxRotateCW') {
+                iconsOnMap[index].iconRotation = (iconsOnMap[index].iconRotation + 90) % 360;
+                needsDraw = true;
+            } else if (action === 'ctxRotateCCW') {
+                iconsOnMap[index].iconRotation = (iconsOnMap[index].iconRotation - 90 + 360) % 360;
+                needsDraw = true;
+            }
+            hideContextMenu(); // Hide menu after any action
+            if (needsDraw) {
+                draw(); // Redraw only if something changed
+            }
+        }
+
+        // --- Drawing Functions ---
+
+        function draw() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (mapImage) {
+                ctx.save(); // Save context state before map transforms
+
+                // --- Apply Map Transformations ---
+                ctx.translate(panOffset.x, panOffset.y); // Pan
+                ctx.scale(zoom, zoom); // Zoom
+
+                // Map Rotation
+                const mapCenterX = mapImage.width / 2;
+                const mapCenterY = mapImage.height / 2;
+                ctx.translate(mapCenterX, mapCenterY);
+                ctx.rotate(currentRotation * Math.PI / 180);
+                ctx.translate(-mapCenterX, -mapCenterY);
+                // --- End Map Transformations ---
+
+                // Draw Map Image
+                ctx.drawImage(mapImage, 0, 0);
+
+                // Draw Grid
+                drawGrid();
+
+                // Draw Icons
+                drawIcons();
+
+                // Restore context state (removes map transforms)
+                ctx.restore();
+
+
+                // --- Draw Temporary Dragging Icon (in SCREEN coordinates) ---
+                 if (isDraggingIcon && draggedIcon && !draggedIcon.isPaletteIcon) {
+                    const logicalGridSquares = draggedIcon.size || 1;
+                    const sizeCategory = draggedIcon.creatureSizeCategory || 'Medium';
+                    const rotation = draggedIcon.iconRotation || 0;
+
+                    // --- Calculate Visual Scale for Drag ---
+                    let drawScaleFactor = 1.0;
+                    if (sizeCategory === 'Small') {
+                        drawScaleFactor = 0.5;
+                    }
+                    const logicalScreenSize = gridSize * logicalGridSquares * zoom; // Grid space size on screen
+                    const iconDrawScreenSize = logicalScreenSize * drawScaleFactor;   // Actual drawing size on screen
+                    const screenOffset = (logicalScreenSize - iconDrawScreenSize) / 2; // Centering offset on screen
+                    const iconDrawX = draggedIcon.x + screenOffset; // Top-left screen pos for scaled drawing
+                    const iconDrawY = draggedIcon.y + screenOffset;
+                    // --- End Calculation ---
+
+                    let draggedImageSource = draggedIcon.img; // Static image for drag visual
+
+                    if (!draggedImageSource) {
+                         console.warn("Could not find static image source for dragged icon.");
+                     } else {
+                         ctx.save(); // Save state before drawing dragged icon (alpha + local transforms)
+                         ctx.globalAlpha = 0.7; // Apply transparency
+
+                         // --- Apply Local Rotation (around visual center in screen space) ---
+                         const screenCenterX = iconDrawX + iconDrawScreenSize / 2;
+                         const screenCenterY = iconDrawY + iconDrawScreenSize / 2;
+                         ctx.translate(screenCenterX, screenCenterY);
+                         ctx.rotate(rotation * Math.PI / 180);
+                         ctx.translate(-iconDrawScreenSize / 2, -iconDrawScreenSize / 2); // Translate back for drawing at 0,0 local
+                         // --- End Local Rotation ---
+
+                         // Draw image at 0,0 local, scaled to iconDrawScreenSize
+                         ctx.drawImage(draggedImageSource, 0, 0, iconDrawScreenSize, iconDrawScreenSize);
+
+                         // Restore context to remove local rotation BEFORE drawing overlays
+                         ctx.restore();
+
+                         // --- Draw Overlays (Number, Skull) Upright relative to screen ---
+                         ctx.save(); // Save state just for overlays
+                         ctx.globalAlpha = 0.7; // Re-apply transparency
+
+                         // Instance Number
+                         let totalInstancesOfSrc = 1; for (const i of iconsOnMap) { if (i.src === draggedIcon.src) totalInstancesOfSrc++; }
+                         if (draggedIcon.instanceNumber && draggedIcon.instanceNumber > 0 && totalInstancesOfSrc > 1) {
+                             const fontSize = Math.max(6, Math.min(14, iconDrawScreenSize * 0.3)); // Size based on DRAWN size
+                             ctx.font = `bold ${fontSize}px sans-serif`;
+                             ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+                             const textX = iconDrawX + iconDrawScreenSize * 0.95; // Position based on DRAWN pos/size
+                             const textY = iconDrawY + iconDrawScreenSize * 0.95;
+                             ctx.strokeStyle = 'black'; ctx.fillStyle = 'white'; ctx.lineWidth = 2;
+                             ctx.strokeText(draggedIcon.instanceNumber, textX, textY);
+                             ctx.fillText(draggedIcon.instanceNumber, textX, textY);
+                         }
+
+                         // Skull Overlay
+                         if (draggedIcon.isDead) {
+                             if (skullImage && skullImage.complete && skullImage.naturalHeight !== 0) {
+                                 // Draw skull over the DRAWN area
+                                 ctx.drawImage(skullImage, iconDrawX, iconDrawY, iconDrawScreenSize, iconDrawScreenSize);
+                             } else {
+                                 console.warn("Skull image not ready for dragged icon");
+                                 drawDeadMarker(iconDrawX, iconDrawY, iconDrawScreenSize); // Fallback X based on DRAWN size
+                             }
+                         }
+                         ctx.restore(); // Restore after overlays
+
+                     } // End check for valid draggedImageSource
+                 } // --- End temporary icon drawing ---
+
+            } else {
+                // Placeholder text
+                ctx.fillStyle = '#ccc';
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText("Upload a map image to begin", canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        function drawIcons() {
+            const iconBaseSize = gridSize; // Renamed for clarity
+
+            // Calculate counts for conditional numbering
+            const countsOnMap = {};
+            for (const icon of iconsOnMap) {
+                countsOnMap[icon.src] = (countsOnMap[icon.src] || 0) + 1;
+            }
+
+            iconsOnMap.forEach(icon => {
+                // --- Determine Image Source ---
+                let imageToDraw = icon.img; // Static fallback (GIF support removed)
+                if (!imageToDraw || !imageToDraw.complete || imageToDraw.naturalHeight === 0) {
+                     // console.warn(`Static image source not ready for icon ${icon.id} (${icon.src}).`);
+                     return; // Skip if static image not ready
+                 }
+                // --- End Source ---
+
+                // --- Calculate Sizes and Positions ---
+                const worldPos = gridToWorld(icon.gridX, icon.gridY);       // Top-left corner in world space
+                const logicalGridSize = (icon.size || 1) * iconBaseSize;  // World size of occupied grid space
+                const rotation = icon.iconRotation || 0;
+                const sizeCategory = icon.creatureSizeCategory || 'Medium';
+
+                let drawScaleFactor = 1.0; // Default: draw full size
+                if (sizeCategory === 'Small') {
+                    drawScaleFactor = 0.5; // Draw Small creatures at 50% size
+                }
+                const drawSize = logicalGridSize * drawScaleFactor; // Actual pixel size to draw (in world units)
+                const offset = (logicalGridSize - drawSize) / 2;   // Centering offset (in world units)
+                const drawX = worldPos.x + offset;                 // Top-left world coordinate for drawing
+                const drawY = worldPos.y + offset;
+                // --- End Calculations ---
+
+                // --- Apply Local Rotation (around VISUAL center) ---
+                 ctx.save();
+                 const drawCenterX = drawX + drawSize / 2;
+                 const drawCenterY = drawY + drawSize / 2;
+                 ctx.translate(drawCenterX, drawCenterY); // Move to visual center
+                 ctx.rotate(rotation * Math.PI / 180);     // Rotate
+                 ctx.translate(-drawSize / 2, -drawSize / 2); // Move back for drawing at 0,0 local
+                 // --- End Rotation ---
+
+                 // --- Draw Image ---
+                 try {
+                    // Draw the image at (0, 0) in the locally rotated/translated context, scaled to drawSize
+                    ctx.drawImage(imageToDraw, 0, 0, drawSize, drawSize);
+                 } catch (e) {
+                     console.error(`Error drawing static image for icon ${icon.id} (${icon.src}):`, e);
+                 }
+                 ctx.restore(); // Restore from local rotation transform
+                 // --- End Draw Image ---
+
+
+                 // --- Draw Overlays (Number, Skull) - Position relative to DRAWN area ---
+                 const totalInstancesOfSrc = countsOnMap[icon.src] || 0;
+                 if (icon.instanceNumber && icon.instanceNumber > 0 && totalInstancesOfSrc > 1) {
+                    ctx.save();
+                    const fontSize = Math.max(6, Math.min(14, drawSize * 0.3)) / zoom; // Font size based on drawSize
+                    ctx.font = `bold ${fontSize}px sans-serif`;
+                    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+                    // Position relative to DRAWN bottom-right corner (drawX/Y + drawSize)
+                    const textX = drawX + drawSize * 0.95;
+                    const textY = drawY + drawSize * 0.95;
+                    ctx.strokeStyle = 'black'; ctx.fillStyle = 'white'; ctx.lineWidth = 2 / zoom;
+                    ctx.strokeText(icon.instanceNumber, textX, textY);
+                    ctx.fillText(icon.instanceNumber, textX, textY);
+                    ctx.restore();
+                 }
+
+                 if (icon.isDead) {
+                     if (skullImage && skullImage.complete && skullImage.naturalHeight !== 0) {
+                         ctx.save();
+                         ctx.globalAlpha = 0.8;
+                         // Draw skull over the DRAWN area (drawX/Y, drawSize)
+                         ctx.drawImage(skullImage, drawX, drawY, drawSize, drawSize);
+                         ctx.restore();
+                     } else {
+                         console.warn("Skull image not ready...", icon.id);
+                         // Draw fallback X over the DRAWN area
+                         drawDeadMarkerWorld(drawX, drawY, drawSize);
+                     }
+                 }
+                 // --- End Overlays ---
+
+            }); // End forEach
+        } // End drawIcons
+
+
+
+        function drawGrid() {
+            const scaledGridSize = gridSize * zoom;
+            if (scaledGridSize < 3 || !mapImage) return; // Added !mapImage check for safety
+
+            ctx.save(); // Isolate grid drawing state (line width, stroke style)
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+            // Set line width relative to the base image, unaffected by zoom INSIDE the transform.
+            // The scale(zoom) in draw() handles the visual scaling.
+            ctx.lineWidth = 2; // Draw thin lines in the world coordinate space
+
+            // Calculate the visible range in WORLD coordinates (original map orientation)
+            const topLeftWorld = screenToWorld(0, 0);
+            const topRightWorld = screenToWorld(canvas.width, 0);
+            const bottomLeftWorld = screenToWorld(0, canvas.height);
+            const bottomRightWorld = screenToWorld(canvas.width, canvas.height);
+
+            // Find min/max world coordinates visible on screen
+            const minVisibleWorldX = Math.min(topLeftWorld.x, topRightWorld.x, bottomLeftWorld.x, bottomRightWorld.x);
+            const maxVisibleWorldX = Math.max(topLeftWorld.x, topRightWorld.x, bottomLeftWorld.x, bottomRightWorld.x);
+            const minVisibleWorldY = Math.min(topLeftWorld.y, topRightWorld.y, bottomLeftWorld.y, bottomRightWorld.y);
+            const maxVisibleWorldY = Math.max(topLeftWorld.y, topRightWorld.y, bottomLeftWorld.y, bottomRightWorld.y);
+
+            // Determine grid line indices to draw based on visible area AND map bounds
+            const startCol = Math.max(0, Math.floor(minVisibleWorldX / gridSize));
+            const endCol = Math.min(Math.ceil(mapImage.width / gridSize), Math.ceil(maxVisibleWorldX / gridSize));
+            const startRow = Math.max(0, Math.floor(minVisibleWorldY / gridSize));
+            const endRow = Math.min(Math.ceil(mapImage.height / gridSize), Math.ceil(maxVisibleWorldY / gridSize));
+
+            ctx.beginPath(); // Single path for efficiency
+
+            // Draw vertical lines spanning the full original map height
+            for (let col = startCol; col <= endCol; col++) {
+                 const x = col * gridSize;
+                 // Only draw lines actually within the map's width
+                 if (x >= 0 && x <= mapImage.width) {
+                    ctx.moveTo(x, 0); // Start at original map top
+                    ctx.lineTo(x, mapImage.height); // End at original map bottom
+                 }
+            }
+
+            // Draw horizontal lines spanning the full original map width
+            for (let row = startRow; row <= endRow; row++) {
+                const y = row * gridSize;
+                 // Only draw lines actually within the map's height
+                 if (y >= 0 && y <= mapImage.height) {
+                    ctx.moveTo(0, y); // Start at original map left
+                    ctx.lineTo(mapImage.width, y); // End at original map right
+                 }
+            }
+
+            ctx.stroke(); // Stroke all lines
+            ctx.restore(); // Restore context state (line width etc.)
+        }
+
+        // NEW or ADAPTED function to draw marker in WORLD coordinates
+        function drawDeadMarkerWorld(worldX, worldY, worldSize) {
+             ctx.save(); // Isolate marker drawing settings
+             ctx.strokeStyle = 'red';
+             // Make line width consistent regardless of zoom level
+             // Line width is defined in world units here
+             ctx.lineWidth = Math.max(1, 3 / zoom); // Ensure minimum width of 1px visually
+             ctx.beginPath();
+             // Calculate offsets relative to worldSize
+             const offset = worldSize * 0.1;
+             // Line 1: Top-left to bottom-right
+             ctx.moveTo(worldX + offset, worldY + offset);
+             ctx.lineTo(worldX + worldSize - offset, worldY + worldSize - offset);
+             // Line 2: Top-right to bottom-left
+             ctx.moveTo(worldX + worldSize - offset, worldY + offset);
+             ctx.lineTo(worldX + offset, worldY + worldSize - offset);
+             ctx.stroke();
+             ctx.restore(); // Restore context state
+        }
+
+        // Keep the original drawDeadMarker for the screen-space dragged icon
+        function drawDeadMarker(screenX, screenY, size) {
+             // Draws marker in screen space
+             ctx.save(); // Isolate settings
+             ctx.strokeStyle = 'red';
+             ctx.lineWidth = 3; // Fixed pixel width for screen drawing
+             ctx.beginPath();
+             const offset = size * 0.1;
+             ctx.moveTo(screenX + offset, screenY + offset);
+             ctx.lineTo(screenX + size - offset, screenY + size - offset);
+             ctx.moveTo(screenX + size - offset, screenY + offset);
+             ctx.lineTo(screenX + offset, screenY + size - offset);
+             ctx.stroke();
+             ctx.restore();
+        }
+
+        // --- Helper Functions ---
+
+        function getMousePos(canvas, event) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top
+            };
+        }
+
+        // Convert screen coordinates (canvas pixels) to world coordinates (map pixels, considering rotation)
+                // Convert screen coordinates (canvas pixels) to world coordinates (original map pixels)
+                function screenToWorld(screenX, screenY) {
+            if (!mapImage) return { x: 0, y: 0 };
+
+            // 1. Undo Pan and Zoom
+            let x = (screenX - panOffset.x) / zoom;
+            let y = (screenY - panOffset.y) / zoom;
+
+            // Point (x, y) is now in the coordinate system *after* rotation was applied in draw()
+
+            // 2. Undo Rotation (around map center)
+            const mapCenterX = mapImage.width / 2;
+            const mapCenterY = mapImage.height / 2;
+            const angleRad = -currentRotation * Math.PI / 180; // Inverse angle
+
+            // Translate point so map center becomes the origin
+            x -= mapCenterX;
+            y -= mapCenterY;
+
+            // Apply inverse rotation
+            const rotatedX = x * Math.cos(angleRad) - y * Math.sin(angleRad);
+            const rotatedY = x * Math.sin(angleRad) + y * Math.cos(angleRad);
+
+            // Translate back to get original world coordinates
+            const finalWorldX = rotatedX + mapCenterX;
+            const finalWorldY = rotatedY + mapCenterY;
+
+            return { x: finalWorldX, y: finalWorldY };
+        }
+
+        // Convert world coordinates (original map pixels) to screen coordinates (canvas pixels)
+        function worldToScreen(worldX, worldY) {
+             if (!mapImage) return { x: 0, y: 0 };
+
+             // 1. Apply Rotation (around map center)
+             const mapCenterX = mapImage.width / 2;
+             const mapCenterY = mapImage.height / 2;
+             const angleRad = currentRotation * Math.PI / 180; // Forward angle
+
+             // Translate point so map center is the origin
+             let x = worldX - mapCenterX;
+             let y = worldY - mapCenterY;
+
+             // Apply forward rotation
+             const rotatedX = x * Math.cos(angleRad) - y * Math.sin(angleRad);
+             const rotatedY = x * Math.sin(angleRad) + y * Math.cos(angleRad);
+
+             // Translate back, putting point in the rotated coordinate space relative to top-left
+             x = rotatedX + mapCenterX;
+             y = rotatedY + mapCenterY;
+
+             // Point (x,y) is now ready for zoom and pan
+
+             // 2. Apply Zoom and Pan
+             const screenX = (x * zoom) + panOffset.x;
+             const screenY = (y * zoom) + panOffset.y;
+
+             return { x: screenX, y: screenY };
+        }
+
+        // Convert screen coordinates to grid cell coordinates {gridX, gridY}
+        function screenToGrid(screenX, screenY) {
+             if (!mapImage) return { gridX: null, gridY: null };
+
+             const worldPos = screenToWorld(screenX, screenY); // Uses the updated screenToWorld
+
+            // Check if world position is within the *original* map image bounds
+            // (Grid is defined relative to the original image data)
+             if (worldPos.x < 0 || worldPos.x >= mapImage.width || worldPos.y < 0 || worldPos.y >= mapImage.height) {
+                  console.log("Screen point corresponds to outside map bounds", worldPos);
+                  // Return null if click is outside the actual map image area,
+                  // even if it's within the visual rotated bounds on canvas.
+                  // This prevents placing icons in empty space created by rotating.
+                  return { gridX: null, gridY: null };
+             }
+
+             const gridX = Math.floor(worldPos.x / gridSize);
+             const gridY = Math.floor(worldPos.y / gridSize);
+
+             // Additional check: ensure calculated grid cell is within the map's grid dimensions
+             const maxGridX = Math.floor(mapImage.width / gridSize);
+             const maxGridY = Math.floor(mapImage.height / gridSize);
+             if (gridX < 0 || gridY < 0 || gridX >= maxGridX || gridY >= maxGridY ) {
+                  console.log("Calculated grid cell outside map grid dimensions", {gridX, gridY});
+                  // return { gridX: null, gridY: null }; // Be stricter? Or allow partials? Let's allow for now.
+             }
+
+
+             return { gridX, gridY };
+        }
+
+        // Convert grid cell coordinates {gridX, gridY} to world coordinates (top-left corner of cell on original map)
+        function gridToWorld(gridX, gridY) {
+            // This remains simple: grid coords directly map to original image pixels
+            return {
+                x: gridX * gridSize,
+                y: gridY * gridSize
+            };
+        }
+
+
+         // Convert grid cell coordinates {gridX, gridY} to screen coordinates (top-left corner, considering rotation/zoom/pan)
+         function gridToScreen(gridX, gridY) {
+            const worldPos = gridToWorld(gridX, gridY); // Get world pos (original map)
+            return worldToScreen(worldPos.x, worldPos.y); // Convert that to screen pos (uses updated worldToScreen)
+         }
+
+
+        // Find which icon (if any) is at a given screen coordinate
+        function getIconAtScreenPos(screenX, screenY) {
+            if (!mapImage || iconsOnMap.length === 0) return null;
+
+            const worldPos = screenToWorld(screenX, screenY); // Convert click to world coords
+
+            // Iterate icons in reverse (topmost first)
+            for (let i = iconsOnMap.length - 1; i >= 0; i--) {
+                const icon = iconsOnMap[i];
+                const iconSize = icon.size || 1; // Get size, default to 1
+
+                // Calculate icon's bounding box in world coordinates
+                const iconWorldX = icon.gridX * gridSize;
+                const iconWorldY = icon.gridY * gridSize;
+                const iconWorldWidth = iconSize * gridSize;
+                const iconWorldHeight = iconSize * gridSize; // Same as width for square icons
+
+                // Check if the world position of the click is within the icon's bounds
+                if (
+                    worldPos.x >= iconWorldX &&
+                    worldPos.x < iconWorldX + iconWorldWidth &&
+                    worldPos.y >= iconWorldY &&
+                    worldPos.y < iconWorldY + iconWorldHeight
+                ) {
+                    return icon; // Found the icon
+                }
+            }
+            return null; // No icon found at this position
+        }
+
+        // --- Start the App ---
+        initialize();
+
+    </script>
+
+</body>
+</html>
