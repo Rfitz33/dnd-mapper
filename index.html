@@ -223,17 +223,25 @@
             <label for="mapUpload">Upload Map:</label>
             <input type="file" id="mapUpload" accept="image/*">
         </div>
-        <div id="scalingControls" class="scaling-controls">
+        <div style="border-left: 1px solid #bbb; padding-left: 10px;">
+            <input type="checkbox" id="showGridCheckbox" checked>
+            <label for="showGridCheckbox">Show Grid</label>
+        </div>
+        <div id="scalingControls" class="scaling-controls hidden">
             <label for="gridSizeSlider">Grid Size (pixels):</label>
             <input type="range" id="gridSizeSlider" min="10" max="200" value="50">
             <span id="gridSizeValue">50</span>px
-            <div id="rotationControls" style="display: inline-block; margin-left: 15px;">
+            <div id="rotationControls" class="hidden" style="display: inline-block; margin-left: 15px;">
                 <button id="rotateLeftButton" title="Rotate Counter-Clockwise">↶ Rotate</button>
                 <button id="rotateRightButton" title="Rotate Clockwise">Rotate ↷</button>
            </div>
-            <button id="confirmScaleButton">Confirm Scale (1 square = 5ft)</button>
-            <p style="margin: 0 0 0 10px; font-size: 0.9em;">Adjust slider until grid squares match 5ft on your map.</p>
+            <button id="confirmScaleAndRotationButton">Set Scale & Rotation</button>
+            <p style="margin: 0 0 0 10px; font-size: 0.9em;">Adjust slider/rotation, then set.</p>
         </div>
+        <div id="gridPanningControls" class="hidden" style="border-left: 1px solid #bbb; padding-left: 10px;"> <!-- Start hidden -->
+            <p style="margin: 0 5px 0 0; font-size: 0.9em; display: inline;">Drag grid lines to align. </p>
+            <button id="confirmGridPositionButton">Confirm Grid Position</button>
+       </div>
          <div id="zoomControls" class="hidden"> <!-- Initially hidden -->
             <label for="zoomSlider">Zoom:</label>
             <input type="range" id="zoomSlider" min="0.1" max="5" step="0.1" value="1">
@@ -261,8 +269,8 @@
             <button id="ctxMarkDead">Mark Dead/Alive</button>
             <button id="ctxRemove">Remove</button>
             <hr style="margin: 5px 0;"> <!-- Optional separator -->
-            <button id="ctxSetMedium">Set Size: Medium (1x1)</button>
             <button id="ctxSetSmall">Set Size: Small (Visual)</button>
+            <button id="ctxSetMedium">Set Size: Medium (1x1)</button>
             <button id="ctxSetLarge">Set Size: Large (2x2)</button>
             <button id="ctxSetHuge">Set Size: Huge (3x3)</button>
             <button id="ctxSetGarg">Set Size: Gargantuan (4x4)</button>
@@ -279,12 +287,15 @@
         const ctx = canvas.getContext('2d');
         const gridSizeSlider = document.getElementById('gridSizeSlider');
         const gridSizeValue = document.getElementById('gridSizeValue');
-        const confirmScaleButton = document.getElementById('confirmScaleButton');
+        const showGridCheckbox = document.getElementById('showGridCheckbox'); // New element
+        const confirmScaleAndRotateButton = document.getElementById('confirmScaleAndRotationButton'); // Renamed button
+        const gridPanningControls = document.getElementById('gridPanningControls'); // New controls div
+        const confirmGridPositionButton = document.getElementById('confirmGridPositionButton');
         const scalingControls = document.getElementById('scalingControls');
         const zoomControls = document.getElementById('zoomControls');
         const zoomSlider = document.getElementById('zoomSlider');
         const zoomValue = document.getElementById('zoomValue');
-        const iconPalette = document.getElementById('iconPalette');
+        console.log("zoomSlider element:", zoomSlider); //Log the zoomSlider element
         const mapContainer = document.querySelector('.map-container');
         const iconContextMenu = document.getElementById('iconContextMenu');
         const ctxMove = document.getElementById('ctxMove');
@@ -299,7 +310,10 @@
         let mapImage = null;
         let currentRotation = 0; // Add this: 0, 90, 180, 270 degrees
         let gridSize = 50; // Initial grid size in pixels (adjusts during scaling)
-        let isScaling = true; // Start in scaling mode
+        // let isScaling = true; // Start in scaling mode
+        let currentSetupStep = 'initial'; // 'initial', 'scaling', 'panningGrid', 'done'
+        let isPanningGrid = false; // Specific state for grid panning
+        let gridPanOffset = { x: 0, y: 0 }; // Offset for the grid itself
         let zoom = 1;
         let panOffset = { x: 0, y: 0 };
         let isPanning = false;
@@ -312,9 +326,6 @@
         let flatIconLookup = new Map(); // Map<src, iconDataObject>
         let availableIcons = { // Preset icons
             "Players": [
-            // { src: 'images/player.png', img: null, name: 'Player' },
-                // { src: 'images/farrenBack.png', img: null, name: 'FarrenB' },
-                // { src: 'images/farrenFront.png', img: null, name: 'FarrenF' },
                 { src: 'images/farrenF.png', img: null, name: 'Farren Tanglefoot' },
                 { src: 'images/brorF.png', img: null, name: 'Bror' },
                 { src: 'images/rylanF.png', img: null, name: 'Rylan' },
@@ -339,7 +350,7 @@
                 { src: 'images/wolf.png', img: null, name: 'Wolf' },
                 { src: 'images/cat.png', img: null, name: 'Cat' },
                 { src: 'images/ghOwlS.png', img: null, name: 'Owl' },
-                { src: 'images/ghOwlF.png', img: null, name: 'Owl' },
+                { src: 'images/ghOwl.png', img: null, name: 'Owl' },
                 { src: 'images/gEagleS.png', img: null, name: 'Giant Eagle' },
                 { src: 'images/gEagleS.png', img: null, name: 'Giant Eagle' },
                 { src: 'images/brownBear.png', img: null, name: 'Brown Bear' },
@@ -361,7 +372,7 @@
                 { src: 'images/hobgoblinF.png', img: null, name: 'Hobgoblin Boss' },
                 { src: 'images/hobgoblinCaptain.png', img: null, name: 'Hobgoblin Captain' },
                 { src: 'images/hobgoblinFighter.png', img: null, name: 'Hobgoblin Fighter' },
-                { src: 'images/hobgoblinFighter1.png', img: null, name: 'Hobgoblin Fighter' },
+                { src: 'images/hobgoblinFighter2.png', img: null, name: 'Hobgoblin Fighter' },
                 { src: 'images/hobgoblinMage.png', img: null, name: 'Hobgoblin Mage' },
                 { src: 'images/hobgoblinPaladin.png', img: null, name: 'Hobgoblin Paladin' },
                 { src: 'images/hobgoblinRanger.png', img: null, name: 'Hobgoblin Ranger' }
@@ -415,7 +426,30 @@
             loadSkullImage();
             setupEventListeners();
             updatePalette();
+            currentSetupStep = 'initial'; // Start at initial state
+            updateControlVisibility(); // Function to show/hide controls based on state
             draw(); // Initial draw (empty)
+        }
+
+        function updateControlVisibility() {
+            // Hide all step-specific controls initially
+            scalingControls.classList.add('hidden');
+            rotationControls.classList.add('hidden'); // Rotation is part of scaling step now
+            gridPanningControls.classList.add('hidden');
+            zoomControls.classList.add('hidden'); // Hide zoom/icons until done
+
+            // Show controls based on the current step
+            if (currentSetupStep === 'scaling') {
+                scalingControls.classList.remove('hidden');
+                rotationControls.classList.remove('hidden');
+            } else if (currentSetupStep === 'panningGrid') {
+                gridPanningControls.classList.remove('hidden');
+                // Keep map panning enabled maybe? Or disable? Let's allow both for now.
+            } else if (currentSetupStep === 'done') {
+                zoomControls.classList.remove('hidden');
+                // Icon palette interaction enabled implicitly when not scaling/panningGrid
+            }
+            // 'initial' state shows only upload button essentially
         }
 
         function resizeCanvas() {
@@ -581,8 +615,16 @@
             mapUpload.addEventListener('change', handleMapUpload);
             iconUpload.addEventListener('change', handleIconUpload);
             gridSizeSlider.addEventListener('input', handleGridSizeChange);
-            confirmScaleButton.addEventListener('click', handleConfirmScale);
+            showGridCheckbox.addEventListener('change', draw); // Redraw when checkbox changes
+            confirmScaleAndRotateButton.addEventListener('click', handleConfirmScaleAndRotate); // New handler
+            confirmGridPositionButton.addEventListener('click', handleConfirmGridPosition); // New handler
             zoomSlider.addEventListener('input', handleZoomChange);
+            // --- ADD Check for zoomSlider ---
+            if (zoomSlider) {
+                zoomSlider.addEventListener('input', handleZoomChange); // Add listener only if element exists
+            } else {
+                console.error("Zoom slider element not found during setup!");
+            }
             rotateLeftButton.addEventListener('click', handleRotateLeft);
             rotateRightButton.addEventListener('click', handleRotateRight);
 
@@ -721,6 +763,7 @@
                         console.log("Map image loaded:", mapImage.width, mapImage.height);
                         // Reset state for new map
                         isScaling = true;
+                        gridPanOffset = { x: 0, y: 0 }; // Reset grid pan
                         currentRotation = 0; // Reset rotation
                         zoom = 1; // Reset zoom
                         panOffset = { x: 0, y: 0 }; // Reset pan
@@ -731,8 +774,12 @@
                         gridSizeSlider.value = 50; // Reset grid slider
                         gridSizeValue.textContent = 50;
                         gridSize = 50;
+                        showGridCheckbox.checked = true; // Default grid to visible
                         zoomSlider.value = 1; // Reset zoom slider
                         zoomValue.textContent = '1.0';
+
+                        currentSetupStep = 'scaling'; // Go to scaling step
+                        updateControlVisibility(); // Update UI
 
                         resizeCanvas(); // Resize canvas based on new image (will use rotation=0)
                         centerMap(); // Center the map (will use zoom=1 initially)
@@ -790,62 +837,63 @@
         }
 
         function handleGridSizeChange() {
-            if (!isScaling || !mapImage) return; // Only allow during scaling phase
+            if (currentSetupStep !== 'scaling' || !mapImage) return;
             gridSize = parseInt(gridSizeSlider.value, 10);
             gridSizeValue.textContent = gridSize;
             draw();
         }
 
-        function handleConfirmScale() {
-            if (!mapImage) {
-                alert("Please upload a map image first.");
-                return;
-            }
-            isScaling = false;
-            scalingControls.classList.add('hidden');
-            rotationControls.classList.add('hidden'); // Hide rotation buttons
-            zoomControls.classList.remove('hidden');
-            console.log(`Scale confirmed: 1 grid square = ${gridSize} pixels on base image.`);
-            draw();
-        }
-
         function handleZoomChange() {
-            if (isScaling) return; // No zooming during scaling
+            // Check if setup is done before allowing zoom via slider
+            if (currentSetupStep !== 'done') return; // Prevent zooming before grid is confirmed
+
             const newZoom = parseFloat(zoomSlider.value);
-            applyZoom(newZoom);
-             zoomValue.textContent = newZoom.toFixed(1);
+            // applyZoom already calls draw, so no extra draw() needed here
+            applyZoom(newZoom); // applyZoom internally calls draw()
+            zoomValue.textContent = newZoom.toFixed(1);
         }
 
         function handleKeyDown(event) {
-             if (isScaling) return;
+            // Only allow zoom/pan keys when setup is done
+            if (currentSetupStep !== 'done') return;
 
-             let zoomChanged = false;
-             let newZoom = zoom;
+            let zoomChanged = false;
+            let newZoom = zoom;
 
-             if (event.key === 'ArrowLeft') {
-                 newZoom = Math.max(0.1, zoom - 0.1);
-                 zoomChanged = true;
-             } else if (event.key === 'ArrowRight') {
-                 newZoom = Math.min(5, zoom + 0.1);
-                 zoomChanged = true;
-             }
+            if (event.key === 'ArrowLeft') {
+                newZoom = Math.max(0.1, zoom - 0.1);
+                zoomChanged = true;
+            } else if (event.key === 'ArrowRight') {
+                newZoom = Math.min(5, zoom + 0.1);
+                zoomChanged = true;
+            } else if(event.key === 'ArrowUp') {
+                panOffset.y += 20; needsDraw = true;
+            } else if(event.key === 'ArrowDown') {
+                panOffset.y -= 20; needsDraw = true;
+            } else if(event.key === 'ArrowLeft' && !zoomChanged) {
+                panOffset.x += 20; needsDraw = true; // Pan if not zooming
+            } else if(event.key === 'ArrowRight' && !zoomChanged) {
+                panOffset.x -= 20; needsDraw = true;
+            }   
 
             if (zoomChanged && newZoom !== zoom) {
-                applyZoom(newZoom);
-                zoomSlider.value = newZoom;
+                applyZoom(newZoom); // applyZoom calls draw()
+                if(zoomSlider) zoomSlider.value = newZoom; // Update slider if it exists
                 zoomValue.textContent = newZoom.toFixed(1);
             }
+            // Add redraw for panning if implemented:
+            else if (needsDraw) { draw(); }
         }
 
         function handleRotateLeft() {
-            if (!mapImage || !isScaling) return; // Only rotate during scaling
+            if (currentSetupStep !== 'scaling' || !mapImage) return;
             currentRotation = (currentRotation - 90 + 360) % 360; // Rotate CCW
             console.log("Rotated Left. New angle:", currentRotation);
             onRotationChange();
         }
 
         function handleRotateRight() {
-            if (!mapImage || !isScaling) return; // Only rotate during scaling
+            if (currentSetupStep !== 'scaling' || !mapImage) return;
             currentRotation = (currentRotation + 90) % 360; // Rotate CW
              console.log("Rotated Right. New angle:", currentRotation);
             onRotationChange();
@@ -856,6 +904,27 @@
             resizeCanvas();
             centerMap();
             draw();
+        }
+
+            
+        function handleConfirmScaleAndRotate() {
+            if (currentSetupStep !== 'scaling' || !mapImage) return;
+
+            console.log(`Scale set to ${gridSize}px, Rotation set to ${currentRotation}deg.`);
+            currentSetupStep = 'panningGrid'; // Move to next step
+            // isPanningGrid = true; // REMOVE THIS LINE - Let mousedown handle starting the pan
+            updateControlVisibility(); // Update UI
+            draw(); // Redraw to show grid panning info maybe
+        }
+
+        function handleConfirmGridPosition() {
+            if (currentSetupStep !== 'panningGrid' || !mapImage) return;
+
+            console.log(`Grid position confirmed with offset:`, gridPanOffset);
+            isPanningGrid = false; // Disable grid panning flag
+            currentSetupStep = 'done'; // Setup finished
+            updateControlVisibility(); // Update UI (show zoom controls)
+            draw(); // Final redraw
         }
 
         function getRotatedMapDimensions() {
@@ -887,18 +956,24 @@
         }
 
         function handleMouseMove(event) {
-            // Allow panning updates even during scaling
             if (!mapImage) return;
-
+            // console.log("--- handleMouseMove START ---"); // Very verbose log
             const currentMousePos = getMousePos(canvas, event);
             const dx = currentMousePos.x - lastMousePos.x;
             const dy = currentMousePos.y - lastMousePos.y;
 
-            if (isPanning) { // Panning can happen during or after scaling
-                panOffset.x += dx;
-                panOffset.y += dy;
+            if (isPanningGrid) {
+                // console.log("MouseMove: Panning Grid"); // Verbose log
+                gridPanOffset.x += dx;
+                gridPanOffset.y += dy;
                 draw();
-            } else if (isDraggingIcon && draggedIcon && !isScaling) { // Icon dragging only after scaling
+            } else if (isPanning) {
+                 // console.log("MouseMove: Panning Map"); // Verbose log
+                 panOffset.x += dx;
+                 panOffset.y += dy;
+                 draw();
+            } else if (isDraggingIcon && draggedIcon) {
+                // console.log("MouseMove: Dragging Icon"); // Verbose log
                 draggedIcon.x = currentMousePos.x - draggedIcon.offsetX;
                 draggedIcon.y = currentMousePos.y - draggedIcon.offsetY;
                 draw();
@@ -907,188 +982,156 @@
             lastMousePos = currentMousePos;
 
             // Update cursor style
-            if (!isPanning && !isDraggingIcon) {
-                let cursorStyle = 'grab'; // Default panning cursor
-                // Only check for icon hover cursor AFTER scaling is done
-                if (!isScaling) {
-                    const iconUnderMouse = getIconAtScreenPos(currentMousePos.x, currentMousePos.y);
-                    if (iconUnderMouse) {
-                        cursorStyle = 'grab'; // Or 'pointer'? Grab might be better for consistency
-                    }
-                }
-                canvas.style.cursor = cursorStyle;
-
-            } else if (isDraggingIcon) { // Should only be true if !isScaling
+            if (isPanningGrid) {
+                canvas.style.cursor = 'move';
+            } else if (isDraggingIcon) {
                 canvas.style.cursor = 'grabbing';
             } else if (isPanning) {
                 canvas.style.cursor = 'grabbing';
+            } else { // Default or hovering
+                let cursorStyle = 'grab'; // Default map panning cursor
+                if (currentSetupStep === 'done') { // Only check icon hover when setup is done
+                    const iconUnderMouse = getIconAtScreenPos(currentMousePos.x, currentMousePos.y);
+                    if (iconUnderMouse) { cursorStyle = 'grab'; }
+                } else if (currentSetupStep === 'scaling'){
+                     cursorStyle = 'grab'; // Allow map panning
+                } else {
+                     cursorStyle = 'default'; // Maybe default cursor if nothing else active
+                }
+                canvas.style.cursor = cursorStyle;
             }
         }
 
         function handleMouseUp(event) {
-            console.log("--- handleMouseUp START ---"); // LOG: Start
-            if (!mapImage) {
-                console.log("MouseUp: No map image, exiting."); // LOG
-                return;
-            }
-            let stateChanged = false; // Flag to see if we need to draw
-
-            // Use a temporary variable to hold the dragged icon data,
-            // as the global 'draggedIcon' might be cleared unexpectedly elsewhere.
+            console.log("--- handleMouseUp START ---");
+            if (!mapImage) { /* ... exit ... */ }
+            let stateChanged = false;
             const currentDraggedIconData = draggedIcon;
-            const wasDraggingIcon = isDraggingIcon; // Capture initial state
+            const wasDraggingIcon = isDraggingIcon;
+            const wasPanningGrid = isPanningGrid;
 
-            // Handle end of panning first
-            if (isPanning) {
-                console.log("MouseUp: Handling end of panning."); // LOG
-                isPanning = false;
+            if (isPanning) { isPanning = false; }
+            if (isPanningGrid) { isPanningGrid = false; stateChanged = true; }
+
+            if (wasDraggingIcon && currentDraggedIconData && currentDraggedIconData.id && currentSetupStep === 'done') {
+                console.log("MouseUp: Handling end of VALID icon drag. Icon ID:", currentDraggedIconData.id);
                 stateChanged = true;
-            }
-
-            // Now, specifically handle the icon drop if we *were* dragging
-            if (wasDraggingIcon && currentDraggedIconData && !isScaling) {
-                console.log("MouseUp: Handling end of icon drag. Icon ID:", currentDraggedIconData.id); // LOG
-                stateChanged = true; // Will need redraw
-
                 const currentMousePos = getMousePos(canvas, event);
-                console.log("MouseUp: Mouse Pos:", currentMousePos); // LOG
 
                 let gridX = null, gridY = null;
+                let gridCalcSuccess = false; // Flag to check calculation result
                 try {
-                    // Calculate drop grid square based on CURSOR position
                     const gridResult = screenToGrid(currentMousePos.x, currentMousePos.y);
                     gridX = gridResult.gridX;
                     gridY = gridResult.gridY;
-                    console.log("MouseUp: screenToGrid result:", {gridX, gridY}); // LOG
+                    // Check if BOTH are valid numbers (not null, not undefined)
+                    if (typeof gridX === 'number' && typeof gridY === 'number') {
+                        gridCalcSuccess = true;
+                    }
+                    console.log(`MouseUp: screenToGrid result: {gridX: ${gridX}, gridY: ${gridY}}, Success: ${gridCalcSuccess}`); // Log success flag
                 } catch (error) {
-                    console.error("MouseUp: Error in screenToGrid:", error); // LOG Error
-                    // If grid calc fails, maybe default to restoring?
-                    gridX = null; gridY = null; // Ensure it triggers restore logic below
-                    console.log("MouseUp: Forcing restore due to screenToGrid error."); // LOG
+                    console.error("MouseUp: Error in screenToGrid:", error);
+                    gridCalcSuccess = false; // Ensure it's false on error
                 }
 
-                // Logic to place or restore the icon
-                if (gridX !== null && gridY !== null) { // Dropped in a valid grid square
-                    console.log(`MouseUp: Dropped in valid grid (${gridX}, ${gridY})`); // LOG
-                    // Prepare the data with the new position
+                // --- Modified Logic ---
+                if (gridCalcSuccess) { // Use the success flag
+                    console.log(`MouseUp: Placing icon in valid grid (${gridX}, ${gridY})`);
                     const iconDataToPlace = {
                         id: currentDraggedIconData.id, src: currentDraggedIconData.src, img: currentDraggedIconData.img,
                         gridX: gridX, gridY: gridY, isDead: currentDraggedIconData.isDead,
-                        instanceNumber: currentDraggedIconData.instanceNumber,
-                        size: currentDraggedIconData.size, // Ensure size is preserved
-                        iconRotation: currentDraggedIconData.iconRotation,
-                        creatureSizeCategory: currentDraggedIconData.creatureSizeCategory
+                        instanceNumber: currentDraggedIconData.instanceNumber, size: currentDraggedIconData.size,
+                        iconRotation: currentDraggedIconData.iconRotation, creatureSizeCategory: currentDraggedIconData.creatureSizeCategory
                     };
-                    // Add the icon back to the main array
-                    console.log(`MouseUp: Pushing icon back to map array. Current length: ${iconsOnMap.length}`); // LOG
+                    console.log(`MouseUp: Pushing icon back. Current length: ${iconsOnMap.length}`);
                     iconsOnMap.push(iconDataToPlace);
-                    console.log(`MouseUp: Pushed icon. New length: ${iconsOnMap.length}`); // LOG
-
-                } else { // Dropped outside valid grid OR screenToGrid failed
-                    console.log("MouseUp: Dropped outside valid grid or error occurred. Restoring."); // LOG
-                    if (currentDraggedIconData.originalGridX !== undefined) {
-                        // Prepare data with original position
+                    console.log(`MouseUp: Pushed icon. New length: ${iconsOnMap.length}`);
+                } else { // Restore if grid calc failed OR returned null
+                    console.log("MouseUp: screenToGrid failed or returned null. Attempting restore.");
+                    // Check if original position data exists before restoring
+                    if (currentDraggedIconData.originalGridX !== undefined && currentDraggedIconData.originalGridY !== undefined) {
                         const iconToRestore = {
                             id: currentDraggedIconData.id, src: currentDraggedIconData.src, img: currentDraggedIconData.img,
                             gridX: currentDraggedIconData.originalGridX, gridY: currentDraggedIconData.originalGridY,
                             isDead: currentDraggedIconData.isDead, instanceNumber: currentDraggedIconData.instanceNumber,
-                            size: currentDraggedIconData.size, // Ensure size is preserved
-                            iconRotation: currentDraggedIconData.iconRotation,
-                            creatureSizeCategory: currentDraggedIconData.creatureSizeCategory 
+                            size: currentDraggedIconData.size, iconRotation: currentDraggedIconData.iconRotation,
+                            creatureSizeCategory: currentDraggedIconData.creatureSizeCategory
                         };
-                        // Add the icon back at its original spot
-                        console.log(`MouseUp: Pushing icon back for restore. Current length: ${iconsOnMap.length}`); // LOG
+                        console.log(`MouseUp: Restoring icon. Current length: ${iconsOnMap.length}`);
                         iconsOnMap.push(iconToRestore);
-                        console.log(`MouseUp: Pushed icon for restore. New length: ${iconsOnMap.length}`); // LOG
+                        console.log(`MouseUp: Restored icon. New length: ${iconsOnMap.length}`);
                     } else {
-                        console.warn("MouseUp: Cannot restore - original pos unknown."); // LOG
+                        console.warn("MouseUp: Cannot restore - original position data missing on draggedIcon.", currentDraggedIconData);
+                        // Icon is lost if restore fails!
                     }
                 }
+                // --- End Modified Logic ---
 
-                // --- Crucially, reset state AFTER handling the drop/restore ---
-                console.log("MouseUp: Resetting dragging state variables."); // LOG
+                console.log("MouseUp: Resetting icon dragging state variables.");
                 isDraggingIcon = false;
                 draggedIcon = null;
 
-            } else if (wasDraggingIcon) {
-                // This block catches cases where isDraggingIcon was true initially,
-                // but something was wrong (e.g., draggedIcon was null, or isScaling became true)
-                console.warn(`MouseUp: Dragging flag was true, but condition failed. Resetting. isScaling: ${isScaling}, draggedIcon found: ${!!currentDraggedIconData}`); // LOG
-                stateChanged = true;
-                // Attempt safety restore if possible
-                if(currentDraggedIconData && currentDraggedIconData.originalGridX !== undefined) {
-                     const iconToRestore = { /* ... restore data ... */
-                        id: currentDraggedIconData.id, src: currentDraggedIconData.src, img: currentDraggedIconData.img,
-                        gridX: currentDraggedIconData.originalGridX, gridY: currentDraggedIconData.originalGridY,
-                        isDead: currentDraggedIconData.isDead, instanceNumber: currentDraggedIconData.instanceNumber,
-                        iconRotation: currentDraggedIconData.iconRotation
-                     };
-                    console.log("MouseUp: Safety restore. Pushing icon back."); // LOG
-                    iconsOnMap.push(iconToRestore);
-                }
-                 // Ensure state is reset even in this cleanup case
-                isDraggingIcon = false;
-                draggedIcon = null;
-            }
+            } else if (wasDraggingIcon) { /* ... Safety cleanup ... */ }
 
-            // Reset cursor based on final state
-            if (!isPanning && !isDraggingIcon) {
-                // console.log("MouseUp: Resetting cursor to 'grab'."); // LOG
-                canvas.style.cursor = 'grab';
-            } else {
-                // This case should ideally not happen after a drop, but keep for safety
-                console.log(`MouseUp: Cursor remains 'grabbing'. Panning: ${isPanning}, Dragging: ${isDraggingIcon}`); // LOG
-                canvas.style.cursor = 'grabbing';
-            }
-
-            // Redraw if needed
-            if (stateChanged) {
-                console.log("MouseUp: Calling draw() because state changed."); // LOG
-                draw();
-            }
-            console.log("--- handleMouseUp END ---"); // LOG: End
+            // ... (Cursor reset, final draw call) ...
+            if (!isPanning && !isDraggingIcon && !wasPanningGrid) { /* ... */ }
+            else { /* ... */ }
+            if (stateChanged) { draw(); }
+            console.log("--- handleMouseUp END ---");
         }
 
         function handleMouseDown(event) {
             hideContextMenu();
-            // Allow panning even during scaling, but not icon interaction yet
-            if (!mapImage) return; // Still need map image
-
+            if (!mapImage) return;
             lastMousePos = getMousePos(canvas, event);
+            console.log(`--- handleMouseDown START --- Step: ${currentSetupStep}, Button: ${event.button}`); // LOG
 
-            // If NOT scaling, check for icons first, then allow panning
-            if (!isScaling) {
-                const clickedIcon = getIconAtScreenPos(lastMousePos.x, lastMousePos.y);
-                if (event.button === 0) { // Left mouse button
-                    if (clickedIcon) {
-                        // --- Icon Dragging Logic ---
-                        isDraggingIcon = true;
-                        draggedIcon = {
-                            ...clickedIcon,
-                            originalGridX: clickedIcon.gridX,
-                            originalGridY: clickedIcon.gridY,
-                            isPaletteIcon: false
-                        };
-                        const iconScreenPos = gridToScreen(clickedIcon.gridX, clickedIcon.gridY);
-                        draggedIcon.offsetX = lastMousePos.x - iconScreenPos.x;
-                        draggedIcon.offsetY = lastMousePos.y - iconScreenPos.y;
-                        canvas.style.cursor = 'grabbing';
-                        // Remove original icon from map temporarily during drag
-                        iconsOnMap = iconsOnMap.filter(icon => icon.id !== clickedIcon.id);
-                        draw(); // Redraw WITHOUT the icon that's being dragged
-                        // --- End Icon Dragging Logic ---
+            // --- Reset Interaction Flags ---
+            // Reset flags at the start of ANY mousedown to prevent stale states
+            isPanning = false;
+            isPanningGrid = false;
+            isDraggingIcon = false;
+            // draggedIcon = null; // Don't null draggedIcon here, mouseup needs it
+
+            if (event.button === 0) { // --- LEFT MOUSE BUTTON ---
+                if (currentSetupStep === 'panningGrid') {
+                    console.log("MouseDOWN (Left): Setting isPanningGrid = true"); // LOG
+                    isPanningGrid = true;
+                    canvas.style.cursor = 'move';
+                } else if (currentSetupStep === 'done') {
+                    const clickedIcon = getIconAtScreenPos(lastMousePos.x, lastMousePos.y);
+                    if (clickedIcon && clickedIcon.id) { // Check if icon found AND has an ID
+                         console.log("MouseDOWN (Left): Starting icon drag for", clickedIcon.id); // LOG
+                         isDraggingIcon = true; // Set flag HERE
+                         draggedIcon = { // Prepare draggedIcon object HERE
+                             ...clickedIcon,
+                             originalGridX: clickedIcon.gridX,
+                             originalGridY: clickedIcon.gridY,
+                             isPaletteIcon: false
+                         };
+                         const iconScreenPos = gridToScreen(clickedIcon.gridX, clickedIcon.gridY);
+                         draggedIcon.offsetX = lastMousePos.x - iconScreenPos.x;
+                         draggedIcon.offsetY = lastMousePos.y - iconScreenPos.y;
+                         canvas.style.cursor = 'grabbing';
+                         iconsOnMap = iconsOnMap.filter(icon => icon.id !== clickedIcon.id); // Remove temporarily
+                         draw(); // Redraw WITHOUT the icon that's being dragged
                     } else {
-                        // Start panning if not clicking an icon (and not scaling)
-                        isPanning = true;
-                        canvas.style.cursor = 'grabbing';
+                         console.log("MouseDOWN (Left): Setting isPanning = true (Map Pan)"); // LOG
+                         isPanning = true; // Set map panning flag
+                         canvas.style.cursor = 'grabbing';
                     }
+                } else if (currentSetupStep === 'scaling') {
+                     console.log("MouseDOWN (Left): Setting isPanning = true (Map Pan during scaling)"); // LOG
+                     isPanning = true; // Set map panning flag
+                     canvas.style.cursor = 'grabbing';
+                } else {
+                    console.log("MouseDOWN (Left): No action for current step:", currentSetupStep); // LOG
                 }
+            } else if (event.button === 2) { // --- RIGHT MOUSE BUTTON ---
+                 console.log("MouseDOWN (Right): No drag action initiated."); // LOG
+                 // Do NOT set any drag/pan flags here. Context menu handled by 'contextmenu' event.
             }
-            // If scaling IS true, always initiate panning on left-click
-            else if (event.button === 0) { // 'else if' ensures this runs only when isScaling is true
-                isPanning = true;
-                canvas.style.cursor = 'grabbing';
-            }
+             console.log(`--- handleMouseDown END --- Panning: ${isPanning}, GridPanning: ${isPanningGrid}, IconDragging: ${isDraggingIcon}`); // LOG
         }
 
         function handleMouseLeave(event) {
@@ -1153,7 +1196,7 @@
         }
 
         function applyZoom(newZoom, zoomCenter = null) {
-            if (!mapImage || isScaling) return;
+            if (!mapImage) return;
 
              // Default zoom center to canvas center if not provided
              if (!zoomCenter) {
@@ -1183,122 +1226,141 @@
 
         function handlePaletteDragStart(event) {
             const iconSrc = event.target.dataset.iconSrc;
-            const iconData = flatIconLookup.get(iconSrc); // Use the lookup Map
-            if (!iconData || !iconData.img) return;
-
-             // Use a minimal representation for the drag data
-            event.dataTransfer.setData('text/plain', iconSrc); // Identify the icon being dragged
+            const iconData = flatIconLookup.get(iconSrc);
+            if (!iconData || !iconData.img) {
+                 console.error("DragStart: Could not find icon data or image for src:", iconSrc);
+                 event.preventDefault(); // Prevent dragging bad data
+                 return;
+            }
+            console.log("DragStart: Setting data for:", iconSrc);
+            event.dataTransfer.setData('text/plain', iconSrc);
             event.dataTransfer.effectAllowed = 'copy';
 
-             // Create a temporary draggedIcon state for visual feedback if needed
-             // (Actual placement happens on drop)
-             // Optional: Could create a ghost image for dragging
-             // const dragImg = iconData.img.cloneNode();
-             // event.dataTransfer.setDragImage(dragImg, 15, 15); // Center offset
-
-             // Prepare a placeholder for potential drop
-             draggedIcon = {
+            // --- RE-ADD Global State Setting ---
+             draggedIcon = { // Prepare placeholder state
                  src: iconData.src,
                  img: iconData.img,
-                 isPaletteIcon: true,
-                 offsetX: 15, // Approx center offset for initial placement
+                 isPaletteIcon: true, // Mark as from palette
+                 offsetX: 15,
                  offsetY: 15
              };
              isDraggingIcon = true; // Set flag
+            // --- End Re-add ---
+
+            console.log("DragStart: Started dragging icon from palette:", iconSrc);
         }
 
         function handleDragOver(event) {
-            event.preventDefault(); // Necessary to allow dropping
-             if (isDraggingIcon && draggedIcon && draggedIcon.isPaletteIcon) {
+            // Revert to checking the global state set by palette drag start
+             if (isDraggingIcon && draggedIcon && draggedIcon.isPaletteIcon && currentSetupStep === 'done') {
+                // console.log("DragOver: Allowing drop (isDraggingIcon check)"); // Verbose
+                event.preventDefault(); // Allow drop ONLY if dragging from palette AND setup done
                 event.dataTransfer.dropEffect = 'copy';
-
-                 // Update visual position while dragging over canvas (optional)
-                 const currentMousePos = getMousePos(canvas, event);
-                 draggedIcon.x = currentMousePos.x - draggedIcon.offsetX;
-                 draggedIcon.y = currentMousePos.y - draggedIcon.offsetY;
-                 // Could add draw() here for live preview, but might be slow
              } else {
-                event.dataTransfer.dropEffect = 'none'; // Don't allow drop if not dragging palette icon
+                 // console.log("DragOver: Denying drop"); // Verbose
+                 event.dataTransfer.dropEffect = 'none'; // Default deny
              }
         }
 
         function handleDrop(event) {
+            console.log("--- handleDrop START ---"); // LOG Start
             event.preventDefault();
-             if (isScaling) return; // Don't drop during scaling
+             if (currentSetupStep !== 'done') {
+                 console.log("Drop ignored: Setup not complete.");
+                 return;
+             }
 
             const iconSrc = event.dataTransfer.getData('text/plain');
+            console.log("Drop: Received iconSrc:", iconSrc);
             const iconData = flatIconLookup.get(iconSrc);
 
             if (iconData && iconData.img) {
+                 console.log("Drop: Found iconData:", iconData);
                  const dropPos = getMousePos(canvas, event);
-                 // Snap to grid center based on drop position
-                 const { gridX, gridY } = screenToGrid(dropPos.x, dropPos.y);
+                 console.log("Drop: Mouse Pos:", dropPos);
+
+                 let gridX = null, gridY = null;
+                 try {
+                     const gridResult = screenToGrid(dropPos.x, dropPos.y);
+                     gridX = gridResult.gridX; gridY = gridResult.gridY;
+                     console.log("Drop: screenToGrid result:", {gridX, gridY});
+                 } catch(e) { /* ... error handling ... */ return; }
 
                 if (gridX !== null && gridY !== null) {
-                    let instanceNumber = 0; // Default to 0 if not tracking needed
-                    let currentCount = iconInstanceCounters.get(iconData.src) || 0; // Get current count or start at 0
-                    currentCount++; // Increment for this new instance
-                    instanceNumber = currentCount; // Assign the new number
-                    iconInstanceCounters.set(iconData.src, currentCount); // Store the updated count
+                    let instanceNumber = 0;
+                    let currentCount = iconInstanceCounters.get(iconData.src) || 0;
+                    currentCount++;
+                    instanceNumber = currentCount;
+                    iconInstanceCounters.set(iconData.src, currentCount);
                     console.log(`Assigning number ${instanceNumber} to icon src: ${iconData.src}`);
 
-                    const newIconId = `icon-${nextIconId++}`;
-                    // Place the new icon
+                    // --- Generate ID cleanly BEFORE creating object ---
+                    const newIconId = `icon-${nextIconId}`; // Get current ID part
+                    nextIconId++; // Increment counter AFTER getting the value
+
+                    // --- Place the new icon ---
                     const newIcon = {
-                        id: `icon-${nextIconId++}`,
+                        id: newIconId, // Assign the generated ID
                         src: iconData.src,
-                        img: iconData.img, // Reference the loaded image object
+                        img: iconData.img,
                         gridX: gridX,
                         gridY: gridY,
                         isDead: false,
                         instanceNumber: instanceNumber,
-                        size: 1, // Default size
-                        iconRotation: 0, // Default rotation
+                        size: 1,
+                        iconRotation: 0,
                         creatureSizeCategory: 'Medium'
                     };
                     iconsOnMap.push(newIcon);
-                    console.log("Placed new icon:", newIcon);
-                } else {
-                     console.log("Icon dropped outside grid area.");
-                 }
-            } else {
-                 console.error("Dropped item is not a recognized icon:", iconSrc);
-            }
-            // Reset dragging state regardless of success
-            isDraggingIcon = false;
-            draggedIcon = null;
+                    console.log("Placed new icon:", newIcon); // Log the object
+
+                } else { console.log("Icon dropped outside valid grid area."); }
+            } else { console.error(`Drop: Dropped item src not found or image not loaded: ${iconSrc}`); }
+
+            // Reset dragging state - Important to clear palette drag state
+            console.log("Drop: Resetting drag state");
+            isDraggingIcon = false; // Crucial reset
+            draggedIcon = null;     // Crucial reset
             draw();
+            console.log("--- handleDrop END ---");
         }
 
         function handleContextMenu(event) {
-             event.preventDefault(); // Prevent browser's default context menu
-             if (isScaling) return;
+            console.log("--- handleContextMenu START ---"); // ADD THIS LOG
+            event.preventDefault(); // Prevent browser's default context menu
+            if (currentSetupStep !== 'done') { // Only allow context menu when setup is done
+                console.log("Context menu ignored: Setup not complete.");
+                return;
+            }
 
-             const mousePos = getMousePos(canvas, event);
-             selectedIconForContextMenu = getIconAtScreenPos(mousePos.x, mousePos.y);
+            const mousePos = getMousePos(canvas, event);
+            selectedIconForContextMenu = getIconAtScreenPos(mousePos.x, mousePos.y);
 
-             if (selectedIconForContextMenu) {
-                 positionContextMenu(event.clientX, event.clientY);
-                 // Update menu item text based on state
-                 ctxMarkDead.textContent = selectedIconForContextMenu.isDead ? 'Mark Alive' : 'Mark Dead';
-             } else {
-                 hideContextMenu();
-             }
+            if (selectedIconForContextMenu) {
+                positionContextMenu(event.clientX, event.clientY);
+                // Update menu item text based on state
+                ctxMarkDead.textContent = selectedIconForContextMenu.isDead ? 'Mark Alive' : 'Mark Dead';
+            } else {
+                hideContextMenu();
+            }
         }
 
         function positionContextMenu(x, y) {
-            // Get the bounding rect of the map container (our new offset parent)
-            // This is needed because the menu's absolute positioning is now relative to it.
+            // x and y are event.clientX/Y (viewport coordinates)
+
+            // Get the map container's position relative to the viewport
             const containerRect = mapContainer.getBoundingClientRect();
 
-            // Calculate position relative to the container
+            // Calculate the menu's desired position relative to the container's top-left corner
+            // Subtract container's top/left from the mouse's viewport coordinates
             const menuX = x - containerRect.left;
             const menuY = y - containerRect.top;
 
-            // Apply the calculated position
-            iconContextMenu.style.left = `${x}px`;
-            iconContextMenu.style.top = `${y}px`;
-            iconContextMenu.style.display = 'block';
+            // Apply the calculated coordinates relative to the container
+            iconContextMenu.style.left = `${menuX}px`;
+            iconContextMenu.style.top = `${menuY}px`;
+            iconContextMenu.style.display = 'block'; // Make it visible
+            console.log(`Positioning context menu at (${menuX}, ${menuY}) relative to container.`); // Log position
         }
 
         function hideContextMenu() {
@@ -1339,16 +1401,16 @@
                 iconsOnMap.splice(index, 1); // Use splice for efficiency
                 needsDraw = true;
             }
-            if (action === 'ctxSetMedium') { // Set to Medium 1x1
-                if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Medium') {
-                    iconsOnMap[index].size = 1;
-                    iconsOnMap[index].creatureSizeCategory = 'Medium';
+            if (action === 'ctxSetSmall') { // Set to Small (Visual) 1x1
+                if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Small') {
+                    iconsOnMap[index].size = 1; // Still occupies 1x1 grid
+                    iconsOnMap[index].creatureSizeCategory = 'Small';
                     needsDraw = true;
                 }
-             } else if (action === 'ctxSetSmall') { // Set to Small (Visual) 1x1
-                 if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Small') {
-                     iconsOnMap[index].size = 1; // Still occupies 1x1 grid
-                     iconsOnMap[index].creatureSizeCategory = 'Small';
+             } else if (action === 'ctxSetMedium') { // Set to Medium 1x1
+                 if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Medium') {
+                     iconsOnMap[index].size = 1; 
+                     iconsOnMap[index].creatureSizeCategory = 'Medium';
                      needsDraw = true;
                  }
              } else if (action === 'ctxSetLarge') { // Set to Large 2x2
@@ -1590,57 +1652,73 @@
 
 
         function drawGrid() {
-            const scaledGridSize = gridSize * zoom;
-            if (scaledGridSize < 3 || !mapImage) return; // Added !mapImage check for safety
+            // --- Check Show Grid Checkbox ---
+            if (!showGridCheckbox.checked) {
+                return; // Don't draw if checkbox is unchecked
+            }
+            // --- End Check ---
 
-            ctx.save(); // Isolate grid drawing state (line width, stroke style)
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-            // Set line width relative to the base image, unaffected by zoom INSIDE the transform.
-            // The scale(zoom) in draw() handles the visual scaling.
-            ctx.lineWidth = 2; // Draw thin lines in the world coordinate space
+            if (!mapImage) return; // Don't draw if no map image
+
+            const scaledGridSize = gridSize * zoom;
+            // Don't draw if grid squares are too small visually
+            if (scaledGridSize < 3) return;
+
+            ctx.save(); // Save the current transform state (includes map pan/zoom/rotation)
+
+            // Grid line style
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'; // Semi-transparent black
+            // Define line width in world space, scale visually with zoom. Min width 1px.
+            ctx.lineWidth = Math.max(1 / zoom, 2); // Make base thickness 2px in world coords
+
+            // --- Calculate Grid Offset in World Coordinates ---
+            // We need to convert the gridPanOffset (which is in screen pixels)
+            // into an offset in the *current rotated and zoomed world space*
+            // This is complex because map rotation affects the direction of the offset.
+
+            // --- Simplified Approach (Ignoring Map Rotation for Grid Pan Direction) ---
+            // Treats gridPanOffset purely as an offset in the final view, converted back to world units.
+            // This will feel correct when the map rotation is 0, but might feel slightly off
+            // when the map is rotated (e.g., dragging grid left might move it diagonally on a rotated map).
+            const gridOffsetXWorld = (gridPanOffset.x / zoom);
+            const gridOffsetYWorld = (gridPanOffset.y / zoom);
+            // --- End Simplified Approach ---
 
             // Calculate the visible range in WORLD coordinates (original map orientation)
-            const topLeftWorld = screenToWorld(0, 0);
-            const topRightWorld = screenToWorld(canvas.width, 0);
-            const bottomLeftWorld = screenToWorld(0, canvas.height);
-            const bottomRightWorld = screenToWorld(canvas.width, canvas.height);
+            // These are needed to determine which lines fall within the viewport
+            const viewTopLeftWorld = screenToWorld(0, 0);
+            const viewBottomRightWorld = screenToWorld(canvas.width, canvas.height);
 
-            // Find min/max world coordinates visible on screen
-            const minVisibleWorldX = Math.min(topLeftWorld.x, topRightWorld.x, bottomLeftWorld.x, bottomRightWorld.x);
-            const maxVisibleWorldX = Math.max(topLeftWorld.x, topRightWorld.x, bottomLeftWorld.x, bottomRightWorld.x);
-            const minVisibleWorldY = Math.min(topLeftWorld.y, topRightWorld.y, bottomLeftWorld.y, bottomRightWorld.y);
-            const maxVisibleWorldY = Math.max(topLeftWorld.y, topRightWorld.y, bottomLeftWorld.y, bottomRightWorld.y);
+            // Determine the range of grid lines potentially visible, considering the offset
+            const firstCol = Math.floor((viewTopLeftWorld.x - gridOffsetXWorld) / gridSize);
+            const lastCol = Math.ceil((viewBottomRightWorld.x - gridOffsetXWorld) / gridSize);
+            const firstRow = Math.floor((viewTopLeftWorld.y - gridOffsetYWorld) / gridSize);
+            const lastRow = Math.ceil((viewBottomRightWorld.y - gridOffsetYWorld) / gridSize);
 
-            // Determine grid line indices to draw based on visible area AND map bounds
-            const startCol = Math.max(0, Math.floor(minVisibleWorldX / gridSize));
-            const endCol = Math.min(Math.ceil(mapImage.width / gridSize), Math.ceil(maxVisibleWorldX / gridSize));
-            const startRow = Math.max(0, Math.floor(minVisibleWorldY / gridSize));
-            const endRow = Math.min(Math.ceil(mapImage.height / gridSize), Math.ceil(maxVisibleWorldY / gridSize));
+            ctx.beginPath(); // Start path for all grid lines
 
-            ctx.beginPath(); // Single path for efficiency
-
-            // Draw vertical lines spanning the full original map height
-            for (let col = startCol; col <= endCol; col++) {
-                 const x = col * gridSize;
-                 // Only draw lines actually within the map's width
-                 if (x >= 0 && x <= mapImage.width) {
-                    ctx.moveTo(x, 0); // Start at original map top
-                    ctx.lineTo(x, mapImage.height); // End at original map bottom
-                 }
+            // --- Draw Vertical Lines ---
+            for (let col = firstCol; col <= lastCol; col++) {
+                 // Calculate the X position of this line in world coordinates, including the offset
+                 const x = col * gridSize + gridOffsetXWorld;
+                 // Draw the line across the entire height of the map image
+                 // (The context's transform clips it to the viewport)
+                 // We use the map image dimensions as absolute bounds
+                 ctx.moveTo(x, 0); // Start at map top (world y=0)
+                 ctx.lineTo(x, mapImage.height); // End at map bottom (world y=height)
             }
 
-            // Draw horizontal lines spanning the full original map width
-            for (let row = startRow; row <= endRow; row++) {
-                const y = row * gridSize;
-                 // Only draw lines actually within the map's height
-                 if (y >= 0 && y <= mapImage.height) {
-                    ctx.moveTo(0, y); // Start at original map left
-                    ctx.lineTo(mapImage.width, y); // End at original map right
-                 }
+            // --- Draw Horizontal Lines ---
+            for (let row = firstRow; row <= lastRow; row++) {
+                // Calculate the Y position of this line in world coordinates, including the offset
+                const y = row * gridSize + gridOffsetYWorld;
+                 // Draw the line across the entire width of the map image
+                 ctx.moveTo(0, y); // Start at map left (world x=0)
+                 ctx.lineTo(mapImage.width, y); // End at map right (world x=width)
             }
 
-            ctx.stroke(); // Stroke all lines
-            ctx.restore(); // Restore context state (line width etc.)
+            ctx.stroke(); // Draw all the lines added to the path
+            ctx.restore(); // Restore the original transform state
         }
 
         // NEW or ADAPTED function to draw marker in WORLD coordinates
@@ -1752,41 +1830,50 @@
 
         // Convert screen coordinates to grid cell coordinates {gridX, gridY}
         function screenToGrid(screenX, screenY) {
-             if (!mapImage) return { gridX: null, gridY: null };
+            if (!mapImage) return { gridX: null, gridY: null };
 
-             const worldPos = screenToWorld(screenX, screenY); // Uses the updated screenToWorld
+            const worldPos = screenToWorld(screenX, screenY); // Uses the updated screenToWorld
+
+            const gridOffsetXWorld = (gridPanOffset.x / zoom);
+            const gridOffsetYWorld = (gridPanOffset.y / zoom);
+            const worldXRelativeToGrid = worldPos.x - gridOffsetXWorld;
+            const worldYRelativeToGrid = worldPos.y - gridOffsetYWorld;
 
             // Check if world position is within the *original* map image bounds
             // (Grid is defined relative to the original image data)
-             if (worldPos.x < 0 || worldPos.x >= mapImage.width || worldPos.y < 0 || worldPos.y >= mapImage.height) {
-                  console.log("Screen point corresponds to outside map bounds", worldPos);
-                  // Return null if click is outside the actual map image area,
-                  // even if it's within the visual rotated bounds on canvas.
-                  // This prevents placing icons in empty space created by rotating.
-                  return { gridX: null, gridY: null };
-             }
+            if (worldPos.x < 0 || worldPos.x >= mapImage.width || worldPos.y < 0 || worldPos.y >= mapImage.height) {
+                console.log("Screen point corresponds to outside map bounds", worldPos);
+                // Return null if click is outside the actual map image area,
+                // even if it's within the visual rotated bounds on canvas.
+                // This prevents placing icons in empty space created by rotating.
+                return { gridX: null, gridY: null };
+            }
 
-             const gridX = Math.floor(worldPos.x / gridSize);
-             const gridY = Math.floor(worldPos.y / gridSize);
+            // Calculate grid indices based on position relative to grid origin
+            const gridX = Math.floor(worldXRelativeToGrid / gridSize);
+            const gridY = Math.floor(worldYRelativeToGrid / gridSize);
 
-             // Additional check: ensure calculated grid cell is within the map's grid dimensions
-             const maxGridX = Math.floor(mapImage.width / gridSize);
-             const maxGridY = Math.floor(mapImage.height / gridSize);
-             if (gridX < 0 || gridY < 0 || gridX >= maxGridX || gridY >= maxGridY ) {
-                  console.log("Calculated grid cell outside map grid dimensions", {gridX, gridY});
-                  // return { gridX: null, gridY: null }; // Be stricter? Or allow partials? Let's allow for now.
-             }
+            // Additional check: ensure calculated grid cell is within the map's grid dimensions
+            const maxGridX = Math.floor(mapImage.width / gridSize);
+            const maxGridY = Math.floor(mapImage.height / gridSize);
+            if (gridX < 0 || gridY < 0 || gridX >= maxGridX || gridY >= maxGridY ) {
+                console.log("Calculated grid cell outside map grid dimensions", {gridX, gridY});
+                // return { gridX: null, gridY: null }; // Be stricter? Or allow partials? Let's allow for now.
+            }
 
 
-             return { gridX, gridY };
+            return { gridX, gridY };
         }
 
         // Convert grid cell coordinates {gridX, gridY} to world coordinates (top-left corner of cell on original map)
         function gridToWorld(gridX, gridY) {
-            // This remains simple: grid coords directly map to original image pixels
+            // --- Adjust world position by the grid's offset ---
+            const gridOffsetXWorld = (gridPanOffset.x / zoom); // Simplified
+            const gridOffsetYWorld = (gridPanOffset.y / zoom); // Simplified
+
             return {
-                x: gridX * gridSize,
-                y: gridY * gridSize
+                x: gridX * gridSize + gridOffsetXWorld,
+                y: gridY * gridSize + gridOffsetYWorld
             };
         }
 
@@ -1798,38 +1885,55 @@
          }
 
 
-        // Find which icon (if any) is at a given screen coordinate
         function getIconAtScreenPos(screenX, screenY) {
             if (!mapImage || iconsOnMap.length === 0) return null;
 
-            const worldPos = screenToWorld(screenX, screenY); // Convert click to world coords
+            const worldPos = screenToWorld(screenX, screenY); // Correct: Click pos in world coords
 
             // Iterate icons in reverse (topmost first)
             for (let i = iconsOnMap.length - 1; i >= 0; i--) {
                 const icon = iconsOnMap[i];
-                const iconSize = icon.size || 1; // Get size, default to 1
+                const iconSize = icon.size || 1; // Logical grid size (1, 2, 3, 4)
 
+                // --- PROBLEM AREA ---
                 // Calculate icon's bounding box in world coordinates
-                const iconWorldX = icon.gridX * gridSize;
-                const iconWorldY = icon.gridY * gridSize;
-                const iconWorldWidth = iconSize * gridSize;
-                const iconWorldHeight = iconSize * gridSize; // Same as width for square icons
+                // This calculation DOES NOT currently account for the gridPanOffset!
+                // It assumes the icon's top-left world position is simply gridX * gridSize.
+                const iconWorldX_Incorrect = icon.gridX * gridSize;
+                const iconWorldY_Incorrect = icon.gridY * gridSize;
 
-                // Check if the world position of the click is within the icon's bounds
+                // --- CORRECTED CALCULATION ---
+                // We need the *actual* top-left world position using gridToWorld, which includes the offset
+                const iconTopLeftWorld = gridToWorld(icon.gridX, icon.gridY);
+                const iconWorldX = iconTopLeftWorld.x;
+                const iconWorldY = iconTopLeftWorld.y;
+                // --- END CORRECTION ---
+
+                const iconWorldWidth = iconSize * gridSize;
+                const iconWorldHeight = iconSize * gridSize;
+
+                // Check if the click's world position is within the icon's *actual* world bounds
                 if (
                     worldPos.x >= iconWorldX &&
                     worldPos.x < iconWorldX + iconWorldWidth &&
                     worldPos.y >= iconWorldY &&
                     worldPos.y < iconWorldY + iconWorldHeight
                 ) {
+                    console.log("getIconAtScreenPos: Found icon:", icon.id); // Add log
                     return icon; // Found the icon
                 }
             }
+            console.log("getIconAtScreenPos: No icon found at", worldPos); // Add log
             return null; // No icon found at this position
         }
 
         // --- Start the App ---
-        initialize();
+            // --- Start the App AFTER the DOM is fully loaded ---
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("DOM fully loaded and parsed");
+            initialize(); // Call initialize only now
+        });
+        // --- End App Start ---
 
     </script>
 
