@@ -215,6 +215,9 @@
         .map-container:-ms-fullscreen canvas { max-width: 100%; max-height: 100%; }
 
     </style>
+    <!-- Firebase SDKs (Add to Map Gridder HTML) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -306,7 +309,19 @@
         const rotateLeftButton = document.getElementById('rotateLeftButton');
         const rotateRightButton = document.getElementById('rotateRightButton'); 
 
-
+        // --- Global Variables ---
+        let db;
+        let currentGroupId = null;
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA71quocoifbpzRSDUmj-p_Qr31F7ftS7g", // Replace if needed
+            authDomain: "webinitiative-824a5.firebaseapp.com",
+            projectId: "webinitiative-824a5",
+            storageBucket: "webinitiative-824a5.appspot.com",
+            messagingSenderId: "643593020547",
+            appId: "1:643593020547:web:9d8bdc21626a766b22a7b6",
+            measurementId: "G-CL2P8ZQGQX"
+        };
         let mapImage = null;
         let currentRotation = 0; // Add this: 0, 90, 180, 270 degrees
         let gridSize = 50; // Initial grid size in pixels (adjusts during scaling)
@@ -326,95 +341,94 @@
         let flatIconLookup = new Map(); // Map<src, iconDataObject>
         let availableIcons = { // Preset icons
             "Players": [
-                { src: 'images/farrenF.png', img: null, name: 'Farren Tanglefoot' },
-                { src: 'images/brorF.png', img: null, name: 'Bror' },
-                { src: 'images/rylanF.png', img: null, name: 'Rylan' },
-                { src: 'images/anakin.png', img: null, name: 'Anakin' },
-                { src: 'images/tRookledust.png', img: null, name: 'Tatiana Rookledust' },
-                { src: 'images/becklin.png', img: null, name: 'Becklin Uth Viharin' },
-                { src: 'images/cudgelIronsmile.png', img: null, name: 'Cudgel Ironsmile' },
-                { src: 'images/elgoDuckditcher.png', img: null, name: 'Kender Female' }
+                { src: 'images/farrenF.png', img: null, name: 'Farren Tanglefoot', modifier: 2, label: 'player' },
+                { src: 'images/brorF.png', img: null, name: 'Bror', modifier: 0, label: 'player' },
+                { src: 'images/rylanF.png', img: null, name: 'Rylan', modifier: 9, label: 'player' },
+                { src: 'images/anakin.png', img: null, name: 'Anakin', modifier: 2, label: 'player' },
+                { src: 'images/tRookledust.png', img: null, name: 'Tatiana Rookledust', modifier: 0, label: 'npc' },
+                { src: 'images/becklin.png', img: null, name: 'Becklin Uth Viharin', modifier: 0, label: 'npc' },
+                { src: 'images/cudgelIronsmile.png', img: null, name: 'Cudgel Ironsmile', modifier: 0, label: 'npc' },
+                { src: 'images/elgoDuckditcher.png', img: null, name: 'Kender Female', modifier: 0, label: 'npc' }
 
             ],
             "Creatures & NPCs": [
-                { src: 'images/barkeep.png', img: null, name: 'Barkeep' },
-                { src: 'images/dwarf.PNG', img: null, name: 'Dwarf' },
-                { src: 'images/dwarfW.PNG', img: null, name: 'Dwarf Woman' },
-                { src: 'images/gnome.png', img: null, name: 'Gnome' },
-                { src: 'images/sorceror.png', img: null, name: 'Human Sorceror' },
-                { src: 'images/oldWoman.PNG', img: null, name: 'Human Woman' },
-                { src: 'images/halfling.png', img: null, name: 'Halfling Rogue' },
-                { src: 'images/cleric.png', img: null, name: 'Halfling Cleric' },
-                { src: 'images/desmondG.png', img: null, name: 'Desmond' },
-                { src: 'images/desmondS.png', img: null, name: 'Desmond' },
-                { src: 'images/guard.PNG', img: null, name: 'Guard' },
-                { src: 'images/guard2.png', img: null, name: 'Guard' },
-                { src: 'images/guard3.PNG', img: null, name: 'Guard' },
-                { src: 'images/snake.png', img: null, name: 'Snake' },
-                { src: 'images/wolf.png', img: null, name: 'Wolf' },
-                { src: 'images/cat.png', img: null, name: 'Cat' },
-                { src: 'images/ghOwlS.png', img: null, name: 'Owl' },
-                { src: 'images/ghOwl.png', img: null, name: 'Owl' },
-                { src: 'images/gEagleF.png', img: null, name: 'Giant Eagle' },
-                { src: 'images/gEagleS.png', img: null, name: 'Giant Eagle' },
-                { src: 'images/brownBear.png', img: null, name: 'Brown Bear' },
-                { src: 'images/warhorse.png', img: null, name: 'Warhorse' },
-                { src: 'images/giantFrog.png', img: null, name: 'Giant Frog' },
-                { src: 'images/giantSpider.png', img: null, name: 'Giant Spider' },
-                { src: 'images/giantHyena.png', img: null, name: 'Giant Hyena' },
-                { src: 'images/giantOctopus.png', img: null, name: 'Giant Octopus' },
-                { src: 'images/giantSeahorse.png', img: null, name: 'Giant Seahorse' }
+                { src: 'images/barkeep.png', img: null, name: 'Barkeep', modifier: 0, label: 'npc' },
+                { src: 'images/dwarf.PNG', img: null, name: 'Dwarf', modifier: 0, label: 'npc' },
+                { src: 'images/dwarfW.PNG', img: null, name: 'Dwarf Woman', modifier: 0, label: 'npc' },
+                { src: 'images/gnome.png', img: null, name: 'Gnome', modifier: 0, label: 'npc' },
+                { src: 'images/sorceror.png', img: null, name: 'Human Sorceror', modifier: 0, label: 'enemy' },
+                { src: 'images/oldWoman.PNG', img: null, name: 'Human Woman', modifier: 0, label: 'npc' },
+                { src: 'images/halfling.png', img: null, name: 'Halfling Rogue', modifier: 0, label: 'enemy' },
+                { src: 'images/cleric.png', img: null, name: 'Halfling Cleric', modifier: 0, label: 'npc'},
+                { src: 'images/desmondG.png', img: null, name: 'Desmond', modifier: 0, label: 'npc'},
+                { src: 'images/desmondS.png', img: null, name: 'Desmond', modifier: 0, label: 'npc'},
+                { src: 'images/guard.PNG', img: null, name: 'Guard', modifier: 0, label: 'npc'},
+                { src: 'images/guard2.png', img: null, name: 'Guard', modifier: 0, label: 'npc'},
+                { src: 'images/guard3.PNG', img: null, name: 'Guard', modifier: 0, label: 'npc'},
+                { src: 'images/snake.png', img: null, name: 'Snake', modifier: 0, label: 'enemy'},
+                { src: 'images/wolf.png', img: null, name: 'Wolf', modifier: 0, label: 'enemy'},
+                { src: 'images/cat.png', img: null, name: 'Cat', modifier: 0, label: 'npc'},
+                { src: 'images/ghOwlS.png', img: null, name: 'Owl', modifier: 0, label: 'npc'},
+                { src: 'images/ghOwl.png', img: null, name: 'Owl', modifier: 0, label: 'npc'},
+                { src: 'images/gEagleF.png', img: null, name: 'Giant Eagle', modifier: 0, label: 'npc'},
+                { src: 'images/gEagleS.png', img: null, name: 'Giant Eagle', modifier: 0, label: 'npc' },
+                { src: 'images/brownBear.png', img: null, name: 'Brown Bear', modifier: 0, label: 'enemy' },
+                { src: 'images/warhorse.png', img: null, name: 'Warhorse', modifier: 0, label: 'npc' },
+                { src: 'images/giantFrog.png', img: null, name: 'Giant Frog', modifier: 0, label: 'npc' },
+                { src: 'images/giantSpider.png', img: null, name: 'Giant Spider', modifier: 0, label: 'npc' },
+                { src: 'images/giantHyena.png', img: null, name: 'Giant Hyena', modifier: 0, label: 'npc' },
+                { src: 'images/giantOctopus.png', img: null, name: 'Giant Octopus', modifier: 0, label: 'npc' },
+                { src: 'images/giantSeahorse.png', img: null, name: 'Giant Seahorse', modifier: 0, label: 'npc' }
             ],
             "Common Enemies:": [
-                { src: 'images/elfBandit.png', img: null, name: 'Bandit' },
-                { src: 'images/bandit1.PNG', img: null, name: 'Bandit with Crossbow' },
-                { src: 'images/monster.png', img: null, name: 'Monster' },
-                { src: 'images/ghoul.png', img: null, name: 'Ghoul' },
-                { src: 'images/ghoul2.png', img: null, name: 'Ghoul' },
-                { src: 'images/goblinMage.png', img: null, name: 'Goblin Mage' },
-                { src: 'images/goblin2.png', img: null, name: 'Goblin Bandit' },
-                { src: 'images/hobgoblinF.png', img: null, name: 'Hobgoblin Boss' },
-                { src: 'images/hobgoblinCaptain.PNG', img: null, name: 'Hobgoblin Captain' },
-                { src: 'images/hobgoblinFighter.PNG', img: null, name: 'Hobgoblin Fighter' },
-                { src: 'images/hobgoblinFighter2.PNG', img: null, name: 'Hobgoblin Fighter' },
-                { src: 'images/hobgoblinMage.PNG', img: null, name: 'Hobgoblin Mage' },
-                { src: 'images/hobgoblinPaladin.PNG', img: null, name: 'Hobgoblin Paladin' },
-                { src: 'images/hobgoblinRanger.PNG', img: null, name: 'Hobgoblin Ranger' }
+                { src: 'images/elfBandit.png', img: null, name: 'Bandit', modifier: 0, label: 'enemy' },
+                { src: 'images/bandit1.PNG', img: null, name: 'Bandit with Crossbow', modifier: 0, label: 'enemy' },
+                { src: 'images/monster.png', img: null, name: 'Monster', modifier: 0, label: 'enemy' },
+                { src: 'images/ghoul.png', img: null, name: 'Ghoul', modifier: 0, label: 'enemy' },
+                { src: 'images/ghoul2.png', img: null, name: 'Ghoul', modifier: 0, label: 'enemy' },
+                { src: 'images/goblinMage.png', img: null, name: 'Goblin Mage', modifier: 0, label: 'enemy' },
+                { src: 'images/goblin2.png', img: null, name: 'Goblin Bandit', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinF.png', img: null, name: 'Hobgoblin Boss', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinCaptain.PNG', img: null, name: 'Hobgoblin Captain', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinFighter.PNG', img: null, name: 'Hobgoblin Fighter', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinFighter2.PNG', img: null, name: 'Hobgoblin Fighter', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinMage.PNG', img: null, name: 'Hobgoblin Mage', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinPaladin.PNG', img: null, name: 'Hobgoblin Paladin', modifier: 0, label: 'enemy' },
+                { src: 'images/hobgoblinRanger.PNG', img: null, name: 'Hobgoblin Ranger', modifier: 0, label: 'enemy' }
             ],
             "Dragon Army": [
-                { src: 'images/red_dragon.png', img: null, name: 'Red Dragon' },
-                { src: 'images/redDragon.PNG', img: null, name: 'Red Dragon' },
-                { src: 'images/greenDragon.PNG', img: null, name: 'Green Dragon' },
-                { src: 'images/silverDragon.PNG', img: null, name: 'Silver Dragon' },
-                { src: 'images/bronzeDragon.PNG', img: null, name: 'Bronze Dragon' },
-                { src: 'images/deathDragon.PNG', img: null, name: 'Death Dragon' },
-                { src: 'images/aurakF.png', img: null, name: 'Aurak Draconian' },
-                { src: 'images/bozak.png', img: null, name: 'Bozak Draconian' },
-                { src: 'images/bozak.gif', img: null, name: 'Bozak Draconian' },
-                { src: 'images/sivakF.png', img: null, name: 'Sivak Draconian' },
-                { src: 'images/kapakF.png', img: null, name: 'Kapak Draconian' },
-                { src: 'images/daOfficer.PNG', img: null, name: 'Dragon Army Officer' },
-                { src: 'images/daSoldier1.PNG', img: null, name: 'Dragon Army Soldier' },
-                { src: 'images/daSoldier2.PNG', img: null, name: 'Dragon Army Soldier' },
-                { src: 'images/daSorceror.png', img: null, name: 'Dragon Army Sorceror' },
-                { src: 'images/lordSoth.PNG', img: null, name: 'Lord Soth' }
+                { src: 'images/red_dragon.png', img: null, name: 'Red Dragon', modifier: 0, label: 'enemy' },
+                { src: 'images/redDragon.PNG', img: null, name: 'Red Dragon', modifier: 0, label: 'enemy' },
+                { src: 'images/greenDragon.PNG', img: null, name: 'Green Dragon', modifier: 0, label: 'enemy' },
+                { src: 'images/silverDragon.PNG', img: null, name: 'Silver Dragon', modifier: 0, label: 'enemy'},
+                { src: 'images/bronzeDragon.PNG', img: null, name: 'Bronze Dragon', modifier: 0, label: 'enemy' },
+                { src: 'images/deathDragon.PNG', img: null, name: 'Death Dragon', modifier: 0, label: 'enemy' },
+                { src: 'images/aurakF.png', img: null, name: 'Aurak Draconian', modifier: 0, label: 'enemy' },
+                { src: 'images/bozak.png', img: null, name: 'Bozak Draconian', modifier: 0, label: 'enemy' },
+                { src: 'images/bozak.gif', img: null, name: 'Bozak Draconian', modifier: 0, label: 'enemy' },
+                { src: 'images/sivakF.png', img: null, name: 'Sivak Draconian', modifier: 0, label: 'enemy' },
+                { src: 'images/kapakF.png', img: null, name: 'Kapak Draconian', modifier: 0, label: 'enemy' },
+                { src: 'images/daOfficer.PNG', img: null, name: 'Dragon Army Officer', modifier: 0, label: 'enemy' },
+                { src: 'images/daSoldier1.PNG', img: null, name: 'Dragon Army Soldier', modifier: 0, label: 'enemy'},
+                { src: 'images/daSoldier2.PNG', img: null, name: 'Dragon Army Soldier' , modifier: 0, label: 'enemy'},
+                { src: 'images/daSorceror.png', img: null, name: 'Dragon Army Sorceror', modifier: 0, label: 'enemy' },
+                { src: 'images/lordSoth.PNG', img: null, name: 'Lord Soth', modifier: 0, label: 'enemy' }
             ],
             "Kalaman Army": [
-                { src: 'images/kSoldierH.PNG', img: null, name: 'Kalaman Soldier on Horseback' },
-                { src: 'images/kSoldier1.png', img: null, name: 'Kalaman Soldier' },
-                { src: 'images/kSoldier2.png', img: null, name: 'Kalaman Soldier' },
-                { src: 'images/kSoldier3.png', img: null, name: 'Kalaman Soldier' },
+                { src: 'images/kSoldierH.PNG', img: null, name: 'Kalaman Soldier on Horseback', modifier: 0, label: 'npc' },
+                { src: 'images/kSoldier1.png', img: null, name: 'Kalaman Soldier', modifier: 0, label: 'npc' },
+                { src: 'images/kSoldier2.png', img: null, name: 'Kalaman Soldier', modifier: 0, label: 'npc' },
+                { src: 'images/kSoldier3.png', img: null, name: 'Kalaman Soldier', modifier: 0, label: 'npc' },
             ], 
             "Objects and Traps": [
-                { src: 'images/treasureChest.png', img: null, name: 'Gold Chest' },
-                { src: 'images/potions.png', img: null, name: 'Potion Crate' },
-                { src: 'images/armorLoot.png', img: null, name: 'Loot' },
-                { src: 'images/goldLoot.png', img: null, name: 'Gold Bags' },
-                { src: 'images/magicScrolls.png', img: null, name: 'Spellbooks & Scrolls' },
-                { src: 'images/tavernFood.png', img: null, name: 'Food & Drinks' },
-                { src: 'images/trapDoor.png', img: null, name: 'Trap Door' },
-                { src: 'images/books.png', img: null, name: 'Books' },
-
+                { src: 'images/treasureChest.png', img: null, name: 'Gold Chest', modifier: 0, label: 'npc' },
+                { src: 'images/potions.png', img: null, name: 'Potion Crate', modifier: 0, label: 'npc' },
+                { src: 'images/armorLoot.png', img: null, name: 'Loot', modifier: 0, label: 'npc' },
+                { src: 'images/goldLoot.png', img: null, name: 'Gold Bags', modifier: 0, label: 'npc' },
+                { src: 'images/magicScrolls.png', img: null, name: 'Spellbooks & Scrolls', modifier: 0, label: 'npc' },
+                { src: 'images/tavernFood.png', img: null, name: 'Food & Drinks', modifier: 0, label: 'npc' },
+                { src: 'images/trapDoor.png', img: null, name: 'Trap Door', modifier: 0, label: 'npc' },
+                { src: 'images/books.png', img: null, name: 'Books', modifier: 0, label: 'npc' },
 
             ]
         };
@@ -425,6 +439,30 @@
         // --- Initialization ---
 
         function initialize() {
+            // --- Add Firebase Initialization ---
+            try {
+                if (!firebase.apps.length) { // Prevent re-initialization
+                firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.firestore();
+                console.log("Map Gridder: Firebase initialized successfully.");
+
+                // --- Get Group ID from localStorage (set by Initiative Tracker) ---
+                currentGroupId = localStorage.getItem('groupId');
+                if (!currentGroupId) {
+                    console.warn("Map Gridder: Group ID not found in localStorage. Initiative features disabled.");
+                    alert("Map Gridder cannot connect to initiative list. Please ensure the Initiative Tracker is open and you are logged into a group.");
+                    // Optionally disable icon dropping/context menu actions if no group ID
+                } else {
+                    console.log("Map Gridder: Operating with Group ID:", currentGroupId);
+                }
+
+            } catch (error) {
+                console.error("Map Gridder: Firebase initialization failed:", error);
+                alert("Map Gridder could not connect to the database. Initiative features disabled.");
+                // Optionally disable features
+            }
+            // --- End Firebase Init ---
             resizeCanvas();
             loadPresetIcons();
             loadSkullImage();
@@ -1267,67 +1305,107 @@
         }
 
         function handleDrop(event) {
-            console.log("--- handleDrop START ---"); // LOG Start
+            console.log("--- handleDrop START ---");
             event.preventDefault();
-             if (currentSetupStep !== 'done') {
-                 console.log("Drop ignored: Setup not complete.");
-                 return;
-             }
+            if (currentSetupStep !== 'done') {
+                console.log("Drop ignored: Setup not complete.");
+                return;
+            }
+
+            // --- Check Firebase/Group ID ---
+            if (!db) {
+                console.error("Drop failed: Firestore DB not initialized.");
+                alert("Database connection error. Cannot add character to initiative.");
+                return;
+            }
+            if (!currentGroupId) {
+                console.error("Drop failed: No Group ID found.");
+                alert("No group selected. Cannot add character to initiative. Please use Initiative Tracker first.");
+                return;
+            }
+            // --- End Check ---
+
 
             const iconSrc = event.dataTransfer.getData('text/plain');
             console.log("Drop: Received iconSrc:", iconSrc);
             const iconData = flatIconLookup.get(iconSrc);
 
             if (iconData && iconData.img) {
-                 console.log("Drop: Found iconData:", iconData);
-                 const dropPos = getMousePos(canvas, event);
-                 console.log("Drop: Mouse Pos:", dropPos);
+                console.log("Drop: Found iconData:", iconData);
+                const dropPos = getMousePos(canvas, event);
+                console.log("Drop: Mouse Pos:", dropPos);
 
-                 let gridX = null, gridY = null;
-                 try {
-                     const gridResult = screenToGrid(dropPos.x, dropPos.y);
-                     gridX = gridResult.gridX; gridY = gridResult.gridY;
-                     console.log("Drop: screenToGrid result:", {gridX, gridY});
-                 } catch(e) { /* ... error handling ... */ return; }
+                let gridX = null, gridY = null;
+                try {
+                    const gridResult = screenToGrid(dropPos.x, dropPos.y);
+                    gridX = gridResult.gridX; gridY = gridResult.gridY;
+                    console.log("Drop: screenToGrid result:", {gridX, gridY});
+                } catch(e) { console.error("Drop: Error in screenToGrid:", e); return; }
 
                 if (gridX !== null && gridY !== null) {
-                    let instanceNumber = 0;
+                    // Calculate unique name if needed (e.g., Goblin 1, Goblin 2)
                     let currentCount = iconInstanceCounters.get(iconData.src) || 0;
                     currentCount++;
-                    instanceNumber = currentCount;
+                    const instanceNumber = currentCount;
                     iconInstanceCounters.set(iconData.src, currentCount);
-                    console.log(`Assigning number ${instanceNumber} to icon src: ${iconData.src}`);
+                    const characterName = `${iconData.name}${instanceNumber > 1 ? ' ' + instanceNumber : ''}`; // Add number if > 1
 
-                    // --- Generate ID cleanly BEFORE creating object ---
-                    const newIconId = `icon-${nextIconId}`; // Get current ID part
-                    nextIconId++; // Increment counter AFTER getting the value
-
-                    // --- Place the new icon ---
-                    const newIcon = {
-                        id: newIconId, // Assign the generated ID
-                        src: iconData.src,
-                        img: iconData.img,
-                        gridX: gridX,
-                        gridY: gridY,
-                        isDead: false,
-                        instanceNumber: instanceNumber,
-                        size: 1,
-                        iconRotation: 0,
-                        creatureSizeCategory: 'Medium'
+                    // --- Prepare Firestore Data ---
+                    const newCharacterData = {
+                        name: characterName,
+                        modifier: iconData.modifier !== undefined ? iconData.modifier : 0, // Use defined modifier or default 0
+                        label: iconData.label || 'npc', // Use defined label or default 'npc'
+                        initiative: null, // Starts unrolled
+                        turnOrder: null,
+                        statusEffects: [],
+                        groupId: currentGroupId // Associate with the current group
                     };
-                    iconsOnMap.push(newIcon);
-                    console.log("Placed new icon:", newIcon); // Log the object
+
+                    // --- Add to Firestore ---
+                    db.collection("players").add(newCharacterData)
+                        .then(docRef => {
+                            console.log("Character added to Firestore with ID:", docRef.id);
+
+                            // --- Create Map Icon Data (including Firestore ID) ---
+                            const newIcon = {
+                                id: `icon-${nextIconId++}`, // Local canvas unique ID
+                                firestoreId: docRef.id,   // <<< STORE Firestore ID
+                                src: iconData.src,
+                                img: iconData.img,
+                                gridX: gridX,
+                                gridY: gridY,
+                                isDead: false,
+                                instanceNumber: instanceNumber,
+                                size: 1, // Default size, can be changed via context menu
+                                iconRotation: 0,
+                                creatureSizeCategory: 'Medium' // Default category
+                            };
+
+                            // Add to map only AFTER successful Firestore add
+                            iconsOnMap.push(newIcon);
+                            console.log("Placed new icon on map:", newIcon);
+                            draw(); // Redraw map with the new icon
+
+                        })
+                        .catch(error => {
+                            console.error("Error adding character to Firestore: ", error);
+                            alert(`Failed to add '${characterName}' to the initiative list. Please try again.`);
+                            // Roll back instance counter if needed
+                            iconInstanceCounters.set(iconData.src, instanceNumber - 1);
+                            // DO NOT add the icon to the map if Firestore failed
+                        });
+                    // --- End Firestore Add ---
 
                 } else { console.log("Icon dropped outside valid grid area."); }
             } else { console.error(`Drop: Dropped item src not found or image not loaded: ${iconSrc}`); }
 
-            // Reset dragging state - Important to clear palette drag state
+            // Reset dragging state outside the Firestore logic
             console.log("Drop: Resetting drag state");
-            isDraggingIcon = false; // Crucial reset
-            draggedIcon = null;     // Crucial reset
-            draw();
+            isDraggingIcon = false;
+            draggedIcon = null;
+            // draw(); // Draw is now called inside the .then() or implicitly if nothing added
             console.log("--- handleDrop END ---");
-        }
+}
 
         function handleContextMenu(event) {
             console.log("--- handleContextMenu START ---"); // ADD THIS LOG
@@ -1402,6 +1480,24 @@
                 // Update the actual icon in the array
                 needsDraw = true;
             } else if (action === 'ctxRemove') {
+                // --- Add Firestore Deletion ---
+                const firestoreIdToDelete = selectedIconForContextMenu.firestoreId;
+                if (firestoreIdToDelete && db && currentGroupId) { // Check db/group ID too
+                    console.log(`Attempting to remove character from Firestore with ID: ${firestoreIdToDelete}`);
+                    db.collection("players").doc(firestoreIdToDelete).delete()
+                        .then(() => {
+                            console.log(`Successfully removed character ${firestoreIdToDelete} from Firestore.`);
+                        })
+                        .catch(error => {
+                            console.error(`Error removing character ${firestoreIdToDelete} from Firestore: `, error);
+                            // Optionally alert the user, but proceed with visual removal anyway?
+                            alert(`Failed to remove '${selectedIconForContextMenu.name}' from the initiative list in the database, but removed from map.`);
+                        });
+                } else {
+                    console.warn(`Icon '${selectedIconForContextMenu.id}' removed from map, but no Firestore ID was associated or DB connection issue.`);
+                    // No Firestore ID - maybe it was added before integration or DB failed on add?
+                }
+                // --- End Firestore Deletion ---
                 iconsOnMap.splice(index, 1); // Use splice for efficiency
                 needsDraw = true;
             }
