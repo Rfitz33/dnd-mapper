@@ -421,14 +421,14 @@
                 { src: 'images/kSoldier3.png', img: null, name: 'Kalaman Soldier', modifier: 0, label: 'npc' },
             ], 
             "Objects and Traps": [
-                { src: 'images/treasureChest.png', img: null, name: 'Gold Chest', modifier: 0, label: 'npc' },
-                { src: 'images/potions.png', img: null, name: 'Potion Crate', modifier: 0, label: 'npc' },
-                { src: 'images/armorLoot.png', img: null, name: 'Loot', modifier: 0, label: 'npc' },
-                { src: 'images/goldLoot.png', img: null, name: 'Gold Bags', modifier: 0, label: 'npc' },
-                { src: 'images/magicScrolls.png', img: null, name: 'Spellbooks & Scrolls', modifier: 0, label: 'npc' },
-                { src: 'images/tavernFood.png', img: null, name: 'Food & Drinks', modifier: 0, label: 'npc' },
-                { src: 'images/trapDoor.png', img: null, name: 'Trap Door', modifier: 0, label: 'npc' },
-                { src: 'images/books.png', img: null, name: 'Books', modifier: 0, label: 'npc' },
+                { src: 'images/treasureChest.png', img: null, name: 'Gold Chest', label: 'item' },
+                { src: 'images/potions.png', img: null, name: 'Potion Crate', label: 'item' },
+                { src: 'images/armorLoot.png', img: null, name: 'Loot', label: 'item' },
+                { src: 'images/goldLoot.png', img: null, name: 'Gold Bags', label: 'item' },
+                { src: 'images/magicScrolls.png', img: null, name: 'Spellbooks & Scrolls', label: 'item' },
+                { src: 'images/tavernFood.png', img: null, name: 'Food & Drinks', label: 'item' },
+                { src: 'images/trapDoor.png', img: null, name: 'Trap Door', label: 'item' },
+                { src: 'images/books.png', img: null, name: 'Books', label: 'item' },
 
             ]
         };
@@ -1312,19 +1312,17 @@
                 return;
             }
 
-            // --- Check Firebase/Group ID ---
+            // --- Check Firebase/Group ID early (still needed for potential combatants) ---
+            // We don't strictly need db/groupID if it's an item, but check anyway for consistency
             if (!db) {
-                console.error("Drop failed: Firestore DB not initialized.");
-                alert("Database connection error. Cannot add character to initiative.");
-                return;
+                console.error("Drop check failed: Firestore DB not initialized.");
+                // Don't necessarily block item placement, but log it.
             }
             if (!currentGroupId) {
-                console.error("Drop failed: No Group ID found.");
-                alert("No group selected. Cannot add character to initiative. Please use Initiative Tracker first.");
-                return;
+                console.warn("Drop check: No Group ID found. Initiative features disabled.");
+                // Don't block item placement, just warn.
             }
             // --- End Check ---
-
 
             const iconSrc = event.dataTransfer.getData('text/plain');
             console.log("Drop: Received iconSrc:", iconSrc);
@@ -1343,69 +1341,93 @@
                 } catch(e) { console.error("Drop: Error in screenToGrid:", e); return; }
 
                 if (gridX !== null && gridY !== null) {
-                    // Calculate unique name if needed (e.g., Goblin 1, Goblin 2)
+                    // Calculate instance number regardless of type
                     let currentCount = iconInstanceCounters.get(iconData.src) || 0;
                     currentCount++;
                     const instanceNumber = currentCount;
                     iconInstanceCounters.set(iconData.src, currentCount);
-                    const characterName = `${iconData.name}${instanceNumber > 1 ? ' ' + instanceNumber : ''}`; // Add number if > 1
+                    // Use base name for items unless numbered names are desired
+                    const iconMapName = `${iconData.name}${instanceNumber > 1 ? ' ' + instanceNumber : ''}`;
 
-                    // --- Prepare Firestore Data ---
-                    const newCharacterData = {
-                        name: characterName,
-                        modifier: iconData.modifier !== undefined ? iconData.modifier : 0, // Use defined modifier or default 0
-                        label: iconData.label || 'npc', // Use defined label or default 'npc'
-                        initiative: null, // Starts unrolled
-                        turnOrder: null,
-                        statusEffects: [],
-                        groupId: currentGroupId // Associate with the current group
-                    };
+                    // --- डिसीजन पॉइंट: क्या इसे इनिशिएटिव में जोड़ना चाहिए? ---
+                    const initiativeLabels = ['player', 'npc', 'enemy'];
+                    const shouldAddToInitiative = initiativeLabels.includes(iconData.label) && db && currentGroupId; // Only add if label matches AND db/group available
 
-                    // --- Add to Firestore ---
-                    db.collection("players").add(newCharacterData)
-                        .then(docRef => {
-                            console.log("Character added to Firestore with ID:", docRef.id);
+                    if (shouldAddToInitiative) {
+                        // --- Add Combatant to Firestore ---
+                        console.log(`Icon '${iconMapName}' is a combatant (label: ${iconData.label}). Adding to Firestore.`);
+                        const newCharacterData = {
+                            name: iconMapName, // Use potentially numbered name
+                            modifier: iconData.modifier !== undefined ? iconData.modifier : 0,
+                            label: iconData.label, // Use the specific label ('player', 'npc', 'enemy')
+                            initiative: null,
+                            turnOrder: null,
+                            statusEffects: [],
+                            groupId: currentGroupId
+                        };
 
-                            // --- Create Map Icon Data (including Firestore ID) ---
-                            const newIcon = {
-                                id: `icon-${nextIconId++}`, // Local canvas unique ID
-                                firestoreId: docRef.id,   // <<< STORE Firestore ID
-                                src: iconData.src,
-                                img: iconData.img,
-                                gridX: gridX,
-                                gridY: gridY,
-                                isDead: false,
-                                instanceNumber: instanceNumber,
-                                size: 1, // Default size, can be changed via context menu
-                                iconRotation: 0,
-                                creatureSizeCategory: 'Medium' // Default category
-                            };
+                        db.collection("players").add(newCharacterData)
+                            .then(docRef => {
+                                console.log("Character added to Firestore with ID:", docRef.id);
+                                const newIcon = {
+                                    id: `icon-${nextIconId++}`,
+                                    firestoreId: docRef.id, // Store Firestore ID
+                                    src: iconData.src,
+                                    img: iconData.img,
+                                    name: iconData.name, // Store base name from preset for potential lookups
+                                    gridX: gridX,
+                                    gridY: gridY,
+                                    isDead: false,
+                                    instanceNumber: instanceNumber,
+                                    label: iconData.label, // Store label on map icon too
+                                    size: 1,
+                                    iconRotation: 0,
+                                    creatureSizeCategory: 'Medium'
+                                };
+                                iconsOnMap.push(newIcon);
+                                console.log("Placed new combatant icon on map:", newIcon);
+                                draw(); // Redraw map
+                            })
+                            .catch(error => {
+                                console.error("Error adding character to Firestore: ", error);
+                                alert(`Failed to add '${iconMapName}' to the initiative list. Please try again.`);
+                                iconInstanceCounters.set(iconData.src, instanceNumber - 1); // Roll back counter
+                            });
+                        // --- End Firestore Add ---
 
-                            // Add to map only AFTER successful Firestore add
-                            iconsOnMap.push(newIcon);
-                            console.log("Placed new icon on map:", newIcon);
-                            draw(); // Redraw map with the new icon
-
-                        })
-                        .catch(error => {
-                            console.error("Error adding character to Firestore: ", error);
-                            alert(`Failed to add '${characterName}' to the initiative list. Please try again.`);
-                            // Roll back instance counter if needed
-                            iconInstanceCounters.set(iconData.src, instanceNumber - 1);
-                            // DO NOT add the icon to the map if Firestore failed
-                        });
-                    // --- End Firestore Add ---
+                    } else {
+                        // --- Add Item/Object to Map Only ---
+                        console.log(`Icon '${iconMapName}' is NOT a combatant (label: ${iconData.label || 'none'}). Adding to map only.`);
+                        const newIcon = {
+                            id: `icon-${nextIconId++}`,
+                            firestoreId: null, // Explicitly null as it's not in Firestore 'players' collection
+                            src: iconData.src,
+                            img: iconData.img,
+                            name: iconData.name, // Store base name
+                            gridX: gridX,
+                            gridY: gridY,
+                            isDead: false, // Items might not use 'dead' state, but keep consistent structure
+                            instanceNumber: instanceNumber,
+                            label: iconData.label || 'item', // Store label ('item' or original)
+                            size: 1,
+                            iconRotation: 0,
+                            creatureSizeCategory: 'Medium' // Or maybe 'Object'? Keep consistent for now.
+                        };
+                        iconsOnMap.push(newIcon);
+                        console.log("Placed new item/object icon on map:", newIcon);
+                        draw(); // Redraw map
+                        // --- End Item/Object Add ---
+                    }
 
                 } else { console.log("Icon dropped outside valid grid area."); }
             } else { console.error(`Drop: Dropped item src not found or image not loaded: ${iconSrc}`); }
 
-            // Reset dragging state outside the Firestore logic
+            // Reset dragging state outside the conditional logic
             console.log("Drop: Resetting drag state");
             isDraggingIcon = false;
             draggedIcon = null;
-            // draw(); // Draw is now called inside the .then() or implicitly if nothing added
             console.log("--- handleDrop END ---");
-}
+        }
 
         function handleContextMenu(event) {
             console.log("--- handleContextMenu START ---"); // ADD THIS LOG
@@ -1462,6 +1484,10 @@
                 return;
             }
 
+            // Get the Firestore ID *before* potentially modifying the icon object
+            const firestoreIdAssociated = iconsOnMap[index]?.firestoreId; // Optional chaining for safety
+            const iconNameForAlerts = iconsOnMap[index]?.name || `Icon ${iconsOnMap[index]?.id || 'Unknown'}`; // Get a name for messages
+
             if (action === 'ctxMove') {
                 // Initiate a drag from context menu (optional, drag is default)
                 isDraggingIcon = true;
@@ -1476,62 +1502,97 @@
                 // Note: User needs to mousedown+drag after this to actually move
 
             } else if (action === 'ctxMarkDead') {
-                iconsOnMap[index].isDead = !iconsOnMap[index].isDead;
-                // Update the actual icon in the array
+                // Check the state *before* toggling
+                const isCurrentlyDead = iconsOnMap[index].isDead;
+                const isBeingMarkedDead = !isCurrentlyDead; // Will the new state be 'dead'?
+
+                // Toggle the visual state first
+                iconsOnMap[index].isDead = !isCurrentlyDead;
                 needsDraw = true;
+
+                // --- Firestore Deletion IF MARKING AS DEAD (MOVED INSIDE THIS BLOCK) ---
+                if (isBeingMarkedDead) { // Check the variable defined above
+                    console.log(`Icon '${iconNameForAlerts}' marked as dead. Attempting Firestore removal.`);
+                    if (firestoreIdAssociated && db && currentGroupId) {
+                        console.log(`Attempting to remove character from Firestore (Action: Mark Dead) with ID: ${firestoreIdAssociated}`);
+                        db.collection("players").doc(firestoreIdAssociated).delete()
+                            .then(() => {
+                                console.log(`Successfully removed character ${firestoreIdAssociated} from Firestore because it was marked dead.`);
+                                // Optional: A less intrusive notification?
+                                // console.log(`'${iconNameForAlerts}' removed from initiative list.`);
+                            })
+                            .catch(error => {
+                                console.error(`Error removing character ${firestoreIdAssociated} from Firestore after marking dead: `, error);
+                                alert(`Failed to remove '${iconNameForAlerts}' from the initiative list in the database after marking dead.`);
+                                // Note: Visual state remains toggled even if DB delete fails.
+                            });
+                    } else {
+                        console.warn(`Icon '${iconNameForAlerts}' marked dead, but no Firestore ID was associated or DB connection issue. Cannot remove from initiative list.`);
+                        // Alert if Firestore ID was expected but missing?
+                        if (firestoreIdAssociated === undefined) { // Check if it was never set
+                            alert(`'${iconNameForAlerts}' marked dead, but it might not have been correctly added to the initiative list initially.`);
+                        }
+                    }
+                } else {
+                    // Icon is being marked as ALIVE (was dead, now isn't)
+                    console.log(`Icon '${iconNameForAlerts}' marked as alive. No Firestore action taken (character remains removed from initiative).`);
+                }
+                // --- End Firestore Deletion Logic ---
+
             } else if (action === 'ctxRemove') {
-                // --- Add Firestore Deletion ---
-                const firestoreIdToDelete = selectedIconForContextMenu.firestoreId;
-                if (firestoreIdToDelete && db && currentGroupId) { // Check db/group ID too
-                    console.log(`Attempting to remove character from Firestore with ID: ${firestoreIdToDelete}`);
-                    db.collection("players").doc(firestoreIdToDelete).delete()
+                // --- Firestore Deletion for Remove action ---
+                if (firestoreIdAssociated && db && currentGroupId) {
+                    console.log(`Attempting to remove character from Firestore (Action: Remove) with ID: ${firestoreIdAssociated}`);
+                    db.collection("players").doc(firestoreIdAssociated).delete()
                         .then(() => {
-                            console.log(`Successfully removed character ${firestoreIdToDelete} from Firestore.`);
+                            console.log(`Successfully removed character ${firestoreIdAssociated} from Firestore.`);
                         })
                         .catch(error => {
-                            console.error(`Error removing character ${firestoreIdToDelete} from Firestore: `, error);
-                            // Optionally alert the user, but proceed with visual removal anyway?
-                            alert(`Failed to remove '${selectedIconForContextMenu.name}' from the initiative list in the database, but removed from map.`);
+                            console.error(`Error removing character ${firestoreIdAssociated} from Firestore: `, error);
+                            alert(`Failed to remove '${iconNameForAlerts}' from the initiative list in the database, but removed from map.`);
                         });
                 } else {
-                    console.warn(`Icon '${selectedIconForContextMenu.id}' removed from map, but no Firestore ID was associated or DB connection issue.`);
-                    // No Firestore ID - maybe it was added before integration or DB failed on add?
+                    console.warn(`Icon '${iconNameForAlerts}' removed from map, but no Firestore ID was associated or DB connection issue.`);
                 }
                 // --- End Firestore Deletion ---
-                iconsOnMap.splice(index, 1); // Use splice for efficiency
+
+                // Visual Removal from map
+                iconsOnMap.splice(index, 1);
                 needsDraw = true;
+
             }
-            if (action === 'ctxSetSmall') { // Set to Small (Visual) 1x1
+            // --- Handle Size Changes ---
+            else if (action === 'ctxSetSmall') {
                 if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Small') {
-                    iconsOnMap[index].size = 1; // Still occupies 1x1 grid
+                    iconsOnMap[index].size = 1;
                     iconsOnMap[index].creatureSizeCategory = 'Small';
                     needsDraw = true;
                 }
-             } else if (action === 'ctxSetMedium') { // Set to Medium 1x1
-                 if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Medium') {
-                     iconsOnMap[index].size = 1; 
-                     iconsOnMap[index].creatureSizeCategory = 'Medium';
-                     needsDraw = true;
-                 }
-             } else if (action === 'ctxSetLarge') { // Set to Large 2x2
-                 if (iconsOnMap[index].size !== 2 || iconsOnMap[index].creatureSizeCategory !== 'Large') {
-                     iconsOnMap[index].size = 2;
-                     iconsOnMap[index].creatureSizeCategory = 'Large'; // Assume Large visual
-                     needsDraw = true;
-                 }
-             } else if (action === 'ctxSetHuge') { // Set to Huge 3x3
-                 if (iconsOnMap[index].size !== 3 || iconsOnMap[index].creatureSizeCategory !== 'Huge') {
-                     iconsOnMap[index].size = 3;
-                     iconsOnMap[index].creatureSizeCategory = 'Huge';
-                     needsDraw = true;
-                 }
-             } else if (action === 'ctxSetGarg') { // Set to Gargantuan 4x4
-                 if (iconsOnMap[index].size !== 4 || iconsOnMap[index].creatureSizeCategory !== 'Gargantuan') {
-                     iconsOnMap[index].size = 4;
-                     iconsOnMap[index].creatureSizeCategory = 'Gargantuan';
-                     needsDraw = true;
-                 }
-             }
+            } else if (action === 'ctxSetMedium') {
+                if (iconsOnMap[index].size !== 1 || iconsOnMap[index].creatureSizeCategory !== 'Medium') {
+                    iconsOnMap[index].size = 1;
+                    iconsOnMap[index].creatureSizeCategory = 'Medium';
+                    needsDraw = true;
+                }
+            } else if (action === 'ctxSetLarge') {
+                if (iconsOnMap[index].size !== 2 || iconsOnMap[index].creatureSizeCategory !== 'Large') {
+                    iconsOnMap[index].size = 2;
+                    iconsOnMap[index].creatureSizeCategory = 'Large';
+                    needsDraw = true;
+                }
+            } else if (action === 'ctxSetHuge') {
+                if (iconsOnMap[index].size !== 3 || iconsOnMap[index].creatureSizeCategory !== 'Huge') {
+                    iconsOnMap[index].size = 3;
+                    iconsOnMap[index].creatureSizeCategory = 'Huge';
+                    needsDraw = true;
+                }
+            } else if (action === 'ctxSetGarg') {
+                if (iconsOnMap[index].size !== 4 || iconsOnMap[index].creatureSizeCategory !== 'Gargantuan') {
+                    iconsOnMap[index].size = 4;
+                    iconsOnMap[index].creatureSizeCategory = 'Gargantuan';
+                    needsDraw = true;
+                }
+            }
             // --- Handle Rotation Changes ---
             else if (action === 'ctxRotateCW') {
                 iconsOnMap[index].iconRotation = (iconsOnMap[index].iconRotation + 90) % 360;
@@ -1540,6 +1601,7 @@
                 iconsOnMap[index].iconRotation = (iconsOnMap[index].iconRotation - 90 + 360) % 360;
                 needsDraw = true;
             }
+
             hideContextMenu(); // Hide menu after any action
             if (needsDraw) {
                 draw(); // Redraw only if something changed
@@ -1995,15 +2057,9 @@
                 const icon = iconsOnMap[i];
                 const iconSize = icon.size || 1; // Logical grid size (1, 2, 3, 4)
 
-                // --- PROBLEM AREA ---
-                // Calculate icon's bounding box in world coordinates
-                // This calculation DOES NOT currently account for the gridPanOffset!
-                // It assumes the icon's top-left world position is simply gridX * gridSize.
                 const iconWorldX_Incorrect = icon.gridX * gridSize;
                 const iconWorldY_Incorrect = icon.gridY * gridSize;
 
-                // --- CORRECTED CALCULATION ---
-                // We need the *actual* top-left world position using gridToWorld, which includes the offset
                 const iconTopLeftWorld = gridToWorld(icon.gridX, icon.gridY);
                 const iconWorldX = iconTopLeftWorld.x;
                 const iconWorldY = iconTopLeftWorld.y;
@@ -2023,7 +2079,7 @@
                     return icon; // Found the icon
                 }
             }
-            console.log("getIconAtScreenPos: No icon found at", worldPos); // Add log
+            // console.log("getIconAtScreenPos: No icon found at", worldPos); // Add log
             return null; // No icon found at this position
         }
 
